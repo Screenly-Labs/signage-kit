@@ -101,6 +101,12 @@ the app.
    condition (`moduleResolution: bundler`/`node16`). After bumping the package, run
    `bun install` so the resolved metadata refreshes.
 
+## Versioning
+
+CalVer, `YYYY.M.MICRO` (e.g. `2026.7.0`) — month with no zero-padding so it stays
+a valid semver string, and `MICRO` counts releases within the month (resets each
+month). Apps pin to a tag: `github:Screenly-Labs/signage-kit#2026.7.0`.
+
 ## Develop
 
 ```sh
