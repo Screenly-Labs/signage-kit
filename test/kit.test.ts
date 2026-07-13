@@ -14,6 +14,10 @@ describe('gate', () => {
     const out = injectGate('<head>\n    <link rel="stylesheet" href="x.css" />\n</head>')
     expect(out.indexOf('classList.add')).toBeLessThan(out.indexOf('<link rel="stylesheet"'))
   })
+
+  it('throws (never silently no-ops) when there is no stylesheet link to inject before', () => {
+    expect(() => injectGate('<head><title>no stylesheet here</title></head>')).toThrow(/degraded-mode gate/)
+  })
 })
 
 describe('floor', () => {

@@ -34,7 +34,13 @@ const TARGETS = browserslistToTargets(browserslist(FLOOR))
 // Insert the gate immediately before the first stylesheet <link> so it runs before
 // first paint (for apps with a built index.html). Returns the modified HTML.
 export function injectGate(html) {
-  return html.replace(/([ \t]*)(<link rel="stylesheet")/, `$1${GATE}\n$1$2`)
+  const out = html.replace(/([ \t]*)(<link rel="stylesheet")/, `$1${GATE}\n$1$2`)
+  // Fail loud: a silent no-op would ship a page that never sets html.legacy on
+  // old/weak players. The gate must land before the first stylesheet.
+  if (out === html) {
+    throw new Error('injectGate: no `<link rel="stylesheet">` found to inject the degraded-mode gate before')
+  }
+  return out
 }
 
 // Down-level + minify CSS to the FLOOR.
