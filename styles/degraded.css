@@ -1,0 +1,18 @@
+/* =========================================================================
+   Degraded mode — shared kill-switch (html.legacy set by the gate the build
+   injects). Old/weak signage players can't afford animation, so drop it entirely.
+   Unlayered + !important so it beats any @layer or prefers-reduced-motion rule.
+
+   NOTE: this is only the generic kill-switch. Any element whose base state is
+   off-screen/invisible and relies on an animation to appear (a falling confetti
+   scrap, an entrance that starts at opacity:0, a container-query-sized time) needs
+   an app-specific "resting state" rule under html.legacy — that stays in the app,
+   because it's specific to the app's design.
+   ========================================================================= */
+html.legacy *,
+html.legacy *::before,
+html.legacy *::after {
+  animation: none !important;
+  transition: none !important;
+  will-change: auto !important;
+}

@@ -1,0 +1,42 @@
+/* =========================================================================
+   Base signage preset — the shared foundation every app @imports, then overrides.
+   Pulls in Tailwind, sets the shared brand token(s), the orientation-neutral fluid
+   root, the resets every app repeats, and the degraded-mode kill-switch.
+
+   Apps import this FIRST, then add their OWN @theme block (palette + display font)
+   and component styles. The design identity stays per-app — only the plumbing and
+   the brand chrome are shared.
+   ========================================================================= */
+/* The app must `@import "tailwindcss"` itself BEFORE this preset — Tailwind
+   resolves that import relative to the app, not this package. */
+@import "./degraded.css";
+
+@theme {
+  /* Brand chrome only (masthead pip, CTA, logo lockup) — NOT the card/content
+     accents, which each app owns. Apps may override the display/body fonts. */
+  --color-brand: #6b4eff;
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  /* One fluid root drives the whole scale; vw+vh keeps it orientation-neutral so
+     portrait and landscape resolve to the same type size. Apps size children in
+     rem. Override the exact stops per app if a design needs a different range. */
+  :root {
+    font-size: clamp(15px, 1vw + 1vh, 56px);
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+  }
+
+  body {
+    min-height: 100vh; /* fallback for engines below the svh floor */
+    min-height: 100svh;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+}
