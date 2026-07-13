@@ -4,7 +4,9 @@ Shared build pipeline, degraded-mode layer, and base Tailwind preset for the
 Screenly-Labs signage apps. It exists to DRY up the parts that were copy-pasted
 across ~15 app repos (and had to be re-fixed several times): the browser-support
 **floor**, the CSS down-leveling recipe, the JS bundler, the degraded-mode
-**gate**, the `replaceChildren` **shim**, and the `html.legacy` **kill-switch**.
+**gate**, the `replaceChildren` **shim**, the `html.legacy` **kill-switch**, the
+canonical **webfonts**, the **footer badge** + its Screenly-player hide logic, and
+the fluid **viewport** foundation.
 
 The apps keep their own **design identity** — palette, display fonts, layout,
 signature element. Only the plumbing and the brand chrome are shared.
@@ -25,8 +27,15 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/build` | `FLOOR`, `GATE`, `injectGate`, `processCss`, `bundleJs` — the build-time pipeline |
 | `@screenly-labs/signage-kit/gate` | `GATE` only, with **no build deps** — safe to import from a Worker SSR template |
 | `@screenly-labs/signage-kit/polyfills` | the `replaceChildren` shim (import for side effect, first line of your entry) |
-| `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand token, fluid root, resets, `svh` fallback, the degraded layer |
+| `@screenly-labs/signage-kit/branding` | `isScreenlyPlayer()`, `removeScreenlyBranding()` — hide the promo badge on Screenly players |
+| `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
+| `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
+| `@screenly-labs/signage-kit/styles/fonts.css` | `@font-face` for the canonical webfont set (Fraunces, Hanken Grotesk, Bricolage, Newsreader, Space Mono, JetBrains Mono) |
+| `@screenly-labs/signage-kit/styles/brand.css` | the standardized corner `.brand` badge |
+| `@screenly-labs/signage-kit/styles/header.css` | optional `.masthead` + `.eyebrow` chrome |
+| `@screenly-labs/signage-kit/styles/stage.css` | optional `.stage` full-viewport centering frame |
 | `@screenly-labs/signage-kit/styles/degraded.css` | just the `html.legacy` kill-switch |
+| `@screenly-labs/signage-kit/screenly-logo.svg` | the canonical Screenly wordmark (copy into the app's `/static/images/`) |
 
 The support **floor** (`FLOOR` = `chrome >= 87, safari >= 14.1, firefox >= 78,
 edge >= 87`) lives here, once. It's the honest minimum where the apps' modern CSS
@@ -91,6 +100,67 @@ off-screen/invisible and relies on animation to appear needs an **app-specific**
 `html.legacy` resting rule — a falling-confetti scatter, an entrance that starts at
 `opacity: 0`, a container-query-sized time. That's design-specific, so it lives in
 the app.
+
+## Shared chrome
+
+**Fonts.** The canonical `@font-face` set lives in `styles/fonts.css`. The matching
+`@fontsource` packages are **dependencies of this kit** (bun + the lockfile own the
+versions in one place), so apps carry **no `@fontsource` deps of their own** — they
+get the files transitively and vendor the subset they use:
+
+```css
+@import '@screenly-labs/signage-kit/styles/fonts.css';
+@theme { --font-display: 'Fraunces', ui-serif, Georgia, serif; } /* pick your display */
+```
+
+```js
+// build step — vendor woff2 into assets/static/fonts (served at /static/fonts/)
+import { syncFonts } from '@screenly-labs/signage-kit/sync-fonts'
+await syncFonts(['fraunces', 'hanken-grotesk'])
+```
+
+`syncFonts()` resolves the files from wherever bun placed them; the `FONTS` manifest
+in `sync-fonts` maps each family key to its package + woff2. `@font-face` is lazy, so
+importing the whole sheet only downloads the families your rendered text actually
+uses. `--font-sans` / `--font-display` / `--font-mono` tokens are set in `preset.css`;
+override the display/mono choice per app. To add a family, `bun add` it here and add
+a manifest entry + `@font-face` — never pin `@fontsource` versions in an app.
+
+**Footer badge.** `@import styles/brand.css`, copy `screenly-logo.svg` into
+`/static/images/`, render the anchor, and call the remover from your entry:
+
+```ts
+import { removeScreenlyBranding } from '@screenly-labs/signage-kit/branding'
+removeScreenlyBranding() // removes .brand on Screenly players; no-op elsewhere
+```
+
+**Fluid root.** `preset.css` drives the whole type scale from three tunable stops —
+override only these, never restate the clamp:
+
+```css
+:root { --root-min: 17px; --root-gain: 1.05; --root-max: 56px; }
+```
+
+## Supported resolutions
+
+Every app must render correctly across this matrix (single source of truth; see
+`Playground/docs/resolutions.md`), in **both orientations**, fluid across the whole
+480px → 4K range — the fluid root is orientation-neutral, so there are no pixel
+breakpoints, only orientation/aspect-ratio media queries where a layout needs them.
+
+| Resolution | Orientation | Notes |
+| --- | --- | --- |
+| 4096×2160 / 3840×2160 | landscape | 4K |
+| 2160×4096 / 2160×3840 | portrait | 4K |
+| 1920×1080 / 1080×1920 | both | 1080p |
+| 1280×720 / 720×1280 | both | 720p |
+| 800×480 / 480×800 | both | Raspberry Pi Touch Display |
+
+Canonical viewport tag (use verbatim in every app's `<head>`):
+
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+```
 
 ## Gotchas
 

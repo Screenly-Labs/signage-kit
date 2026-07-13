@@ -1,0 +1,91 @@
+/* =========================================================================
+   Canonical self-hosted webfonts for Screenly-Labs signage apps.
+
+   One @font-face per family in the shared set, all pointing at the
+   `/static/fonts/<file>.woff2` path every app already vendors into (via the
+   shared `syncFonts` helper in src/sync-fonts.js). @font-face is lazy: the
+   browser only downloads a file when rendered text actually uses that family,
+   so an app can @import this whole sheet and still ship only the woff2 it
+   vendors — the unused declarations cost nothing at runtime.
+
+   Apps map a family onto the design tokens themselves (e.g.
+   `@theme { --font-display: 'Fraunces', ... }`); the kit only owns the faces.
+   The matching @fontsource packages + pinned versions live in the FONTS
+   manifest in src/sync-fonts.js — that is the single source of truth for which
+   files these URLs expect.
+   ========================================================================= */
+
+/* Fraunces — display serif, "standard" axis (optical-size + weight). */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/static/fonts/fraunces-latin-standard-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Fraunces';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/static/fonts/fraunces-latin-standard-italic.woff2') format('woff2');
+}
+
+/* Hanken Grotesk — the de-facto body sans. */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('/static/fonts/hanken-grotesk-latin-wght-normal.woff2') format('woff2');
+}
+
+/* Bricolage Grotesque — display/grotesque, "standard" axis. */
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/static/fonts/bricolage-grotesque-latin-standard-normal.woff2') format('woff2');
+}
+
+/* Newsreader — editorial serif, "standard" axis, with an italic. */
+@font-face {
+  font-family: 'Newsreader';
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/static/fonts/newsreader-latin-standard-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Newsreader';
+  font-style: italic;
+  font-weight: 200 800;
+  font-display: swap;
+  src: url('/static/fonts/newsreader-latin-standard-italic.woff2') format('woff2');
+}
+
+/* Space Mono — non-variable; ship the two weights the apps use. */
+@font-face {
+  font-family: 'Space Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/static/fonts/space-mono-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Space Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/static/fonts/space-mono-latin-700-normal.woff2') format('woff2');
+}
+
+/* JetBrains Mono — monospace, "wght" axis. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('/static/fonts/jetbrains-mono-latin-wght-normal.woff2') format('woff2');
+}

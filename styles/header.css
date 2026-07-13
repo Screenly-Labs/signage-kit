@@ -1,0 +1,32 @@
+/* =========================================================================
+   Optional shared header chrome — the masthead top bar and the eyebrow kicker.
+   Opt-in: only apps that show a top bar @import this.
+
+   .masthead is the flex row (title/metadata in the corners) under a hairline
+   rule; .eyebrow is the small uppercase tracked label. Both read a kit token
+   with a sane fallback, so they render even in a raw-CSS Worker app that hasn't
+   imported preset.css. Apps still own the *content* tokens (accent, dim ink,
+   fonts) and any pip/decoration.
+
+   Unlayered plain CSS (see brand.css for why — the support FLOOR predates
+   native @layer and Worker apps skip layer-flattening).
+   ========================================================================= */
+
+.masthead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block-end: 0.85rem;
+  border-block-end: 1px solid var(--color-hairline, rgb(255 255 255 / 0.12));
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7em;
+  font-size: max(12px, 0.72rem);
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: var(--color-eyebrow, inherit);
+}

@@ -1,0 +1,22 @@
+/* =========================================================================
+   Optional shared stage — the full-viewport centering frame most apps use as
+   the page root: a grid that centres its single child, fills the viewport
+   (with the pre-svh fallback), pads fluidly, and clips overflow so animated
+   decoration can bleed to the edges without scrollbars.
+
+   Opt-in: @import only where the app centres one card on a full-bleed ground.
+   Apps that need a named grid (header/content/footer rows) or a different role
+   for `.stage` keep their own rule instead.
+
+   Unlayered plain CSS (see brand.css for the rationale).
+   ========================================================================= */
+
+.stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh; /* fallback for engines below the svh floor (~2018 players) */
+  min-height: 100svh;
+  padding: clamp(1.5rem, 6vmin, 4rem);
+  overflow: hidden;
+}
