@@ -7,11 +7,9 @@
 // helpers turns each of those into a one-line change here.
 
 import { readFileSync } from 'node:fs'
-import cascadeLayers from '@csstools/postcss-cascade-layers'
 import browserslist from 'browserslist'
 import { build as esbuild } from 'esbuild'
 import { browserslistToTargets, transform as lightningcss } from 'lightningcss'
-import postcss from 'postcss'
 import { GATE } from './gate.js'
 
 // Re-export the gate so build code can `import { GATE } from '.../build'` too.
@@ -51,6 +49,13 @@ export async function processCss(
 ) {
   let css = includeDegraded ? `${DEGRADED_CSS}\n${cssText}` : cssText
   if (flattenLayers) {
+    // postcss + the cascade-layers plugin are only needed to flatten Tailwind's
+    // @layer output, so they're optional peers loaded on demand — raw-CSS apps
+    // (Workers, world-clock) never pull them in.
+    const [{ default: postcss }, { default: cascadeLayers }] = await Promise.all([
+      import('postcss'),
+      import('@csstools/postcss-cascade-layers')
+    ])
     css = (await postcss([cascadeLayers()]).process(css, { from: filename })).css
   }
   const { code } = lightningcss({ filename, code: Buffer.from(css), minify: true, targets: TARGETS })

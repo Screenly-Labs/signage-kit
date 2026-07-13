@@ -13,7 +13,9 @@ signature element. Only the plumbing and the brand chrome are shared.
 
 ```sh
 bun add @screenly-labs/signage-kit
-# peers (already present in the apps): esbuild lightningcss browserslist postcss @csstools/postcss-cascade-layers
+# required peers: esbuild lightningcss browserslist
+# Tailwind apps also: postcss @csstools/postcss-cascade-layers (optional peers,
+# only loaded by processCss({ flattenLayers: true }) — raw-CSS Worker apps skip them)
 ```
 
 ## What it provides
