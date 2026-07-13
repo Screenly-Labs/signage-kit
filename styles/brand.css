@@ -1,0 +1,41 @@
+/* =========================================================================
+   Standardized "Powered by Screenly" footer badge — the shared logo lockup
+   that every signage app carries in the corner. Quiet by design; on a Screenly
+   player it is removed entirely by removeScreenlyBranding() (src/branding.ts),
+   because that viewer is already a customer.
+
+   Markup the apps render (static or SSR):
+     <a class="brand" href="https://www.screenly.io" target="_blank"
+        rel="noopener noreferrer" aria-label="Screenly - opens in a new tab">
+       <img src="/static/images/screenly-logo.svg?v=…" alt="Screenly" />
+     </a>
+
+   Deliberately UNLAYERED plain CSS (not @layer): the support FLOOR
+   (safari 14.1 / chrome 87) predates native @layer, and the raw-CSS Worker apps
+   import this without the Tailwind layer-flattening step. Apps that need a tweak
+   (e.g. a dark-logo filter on a light background) add an unlayered override
+   after the @import.
+   ========================================================================= */
+
+.brand {
+  position: fixed;
+  right: clamp(1rem, 3.2vmin, 2.4rem);
+  bottom: clamp(1rem, 3.2vmin, 2.4rem);
+  z-index: 2;
+  display: block;
+  opacity: 0.55;
+  transition: opacity 200ms ease;
+  border-radius: 4px;
+  outline-offset: 6px;
+}
+
+.brand:hover,
+.brand:focus-visible {
+  opacity: 0.95;
+}
+
+.brand img {
+  display: block;
+  width: auto;
+  height: clamp(13px, 1.3rem, 26px);
+}

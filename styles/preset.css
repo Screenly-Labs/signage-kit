@@ -15,15 +15,32 @@
   /* Brand chrome only (masthead pip, CTA, logo lockup) — NOT the card/content
      accents, which each app owns. Apps may override the display/body fonts. */
   --color-brand: #6b4eff;
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  /* Hairline used by shared chrome (masthead rule, dividers). Apps override. */
+  --color-hairline: rgb(255 255 255 / 0.12);
+  /* Font-family tokens. --font-sans is the body default; apps pick which family
+     backs --font-display / --font-mono (the faces ship in styles/fonts.css).
+     Referenced families still need their @font-face — @import that sheet. */
+  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
+  --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
 }
 
 @layer base {
   /* One fluid root drives the whole scale; vw+vh keeps it orientation-neutral so
-     portrait and landscape resolve to the same type size. Apps size children in
-     rem. Override the exact stops per app if a design needs a different range. */
+     portrait and landscape resolve to the same type size across the whole
+     supported-resolution matrix (800×480 Pi Touch → 4K, both orientations; see
+     README). Apps size children in rem and override only the three stops below
+     — the floor, the vw+vh gain, and the ceiling — instead of restating the
+     clamp or inventing their own --root variable. */
   :root {
-    font-size: clamp(15px, 1vw + 1vh, 56px);
+    --root-min: 15px;
+    --root-gain: 1;
+    --root-max: 56px;
+    font-size: clamp(
+      var(--root-min),
+      calc(var(--root-gain) * 1vw + var(--root-gain) * 1vh),
+      var(--root-max)
+    );
   }
 
   *,
