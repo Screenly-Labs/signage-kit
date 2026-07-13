@@ -1,6 +1,6 @@
 {
   "name": "@screenly-labs/signage-kit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Shared build pipeline, degraded-mode layer, and base Tailwind preset for Screenly-Labs signage apps.",
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -31,6 +31,10 @@
     "esbuild": "^0.28",
     "lightningcss": "^1.32",
     "postcss": "^8"
+  },
+  "peerDependenciesMeta": {
+    "@csstools/postcss-cascade-layers": { "optional": true },
+    "postcss": { "optional": true }
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
