@@ -62,4 +62,15 @@ describe('bundleJs', () => {
     expect(code).not.toContain('export ')
     await rm(dir, { recursive: true, force: true })
   })
+
+  it('can bundle in place (output path == entry path) for served-in-place clients', async () => {
+    const dir = `${import.meta.dir}/.tmp2`
+    const entry = `${dir}/main.js`
+    await Bun.write(entry, 'const x = window.a?.b ?? 2; document.title = String(x)')
+    await bundleJs(entry, entry)
+    const code = await Bun.file(entry).text()
+    expect(code).not.toContain('?.')
+    expect(code).not.toContain('??')
+    await rm(dir, { recursive: true, force: true })
+  })
 })

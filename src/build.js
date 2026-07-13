@@ -71,6 +71,9 @@ export async function processCss(
 // Bundle a browser entry into one self-contained script at the FLOOR's syntax
 // level. Default 'iife' keeps it an export-free classic script; pass format:'esm'
 // for apps that load it as <script type="module"> (e.g. world-clock).
+// allowOverwrite lets the output path equal the entry path, so Worker apps that
+// serve the client in place (clock-app, weather-app: source == served file) can
+// bundle over their own entry, matching the apps' original inlined esbuild.
 export async function bundleJs(entry, outfile, { format = 'iife' } = {}) {
   await esbuild({
     entryPoints: [entry],
@@ -78,6 +81,7 @@ export async function bundleJs(entry, outfile, { format = 'iife' } = {}) {
     minify: true,
     format,
     target: ['es2017'],
-    outfile
+    outfile,
+    allowOverwrite: true
   })
 }
