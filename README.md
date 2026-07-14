@@ -175,7 +175,7 @@ Workers just get `''`). Two things page JS **cannot** see are worth knowing:
 
 - **Request headers are not exposed to page JS.** The `X-Requested-With` package is a
   third, optional argument for server-side callers (a Worker/SSR that has the header):
-  `detectPlayer(ua, referer, requestedWith)`. `vendorFromPackage(pkg)` maps a package on
+  `detectPlayer(ua, referrer, requestedWith)`. `vendorFromPackage(pkg)` maps a package on
   its own. At runtime the profiler works from UA + referrer only.
 
   On the server, use `detectPlayerFromRequest(request)` — it reads `User-Agent`, `Referer`,
