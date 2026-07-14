@@ -13,6 +13,7 @@
   "exports": {
     "./polyfills": "./src/polyfills.ts",
     "./branding": "./src/branding.ts",
+    "./profiler": "./src/profiler.ts",
     "./gate": {
       "types": "./src/gate.d.ts",
       "default": "./src/gate.js"
