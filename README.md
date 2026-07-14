@@ -196,7 +196,7 @@ Workers just get `''`). Two things page JS **cannot** see are worth knowing:
   }
   ```
 - **Referrers to the app's own `*.srly.io` hosts identify the *content*, not the player,**
-  so they're ignored. Referrer's value is recovering players the UA hides — e.g.
+  so they're ignored. Instead, the referrer helps recover a vendor the UA hides — e.g.
   `player.yodeck.com` (Yodeck buried in a generic Fire TV UA) or `pisignage.com` (piSignage
   sends no UA token at all).
 
