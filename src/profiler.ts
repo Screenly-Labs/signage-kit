@@ -326,11 +326,18 @@ export const detectPlayer = (
 
 /**
  * X-Requested-With package name -> vendor (server-side helper). `null` if unknown.
- * Uses `Object.hasOwn` so attacker-controlled values like `constructor`/`toString` can't
- * resolve to an inherited `Object.prototype` member.
+ *
+ * Guards on the value's type rather than an own-property check: attacker-controlled
+ * values like `constructor`/`toString` resolve to inherited `Object.prototype` members,
+ * which are functions, so `typeof === 'string'` rejects them while every real entry (a
+ * string vendor id) passes. This avoids both prototype-pollution AND `Object.hasOwn`
+ * (ES2022) — the kit's support floor includes old signage engines (Chrome 65+ BrightSign)
+ * that predate it, and the build does not polyfill runtime APIs.
  */
-export const vendorFromPackage = (requestedWith: string): PlayerVendor | null =>
-  Object.hasOwn(PACKAGE_VENDORS, requestedWith) ? (PACKAGE_VENDORS[requestedWith] ?? null) : null
+export const vendorFromPackage = (requestedWith: string): PlayerVendor | null => {
+  const vendor = PACKAGE_VENDORS[requestedWith]
+  return typeof vendor === 'string' ? vendor : null
+}
 
 /**
  * Profile the player from an incoming request's headers — the server-side entry point
