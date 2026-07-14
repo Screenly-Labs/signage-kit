@@ -57,12 +57,36 @@ export type Confidence = 'high' | 'medium' | 'low'
 /** Which of the three input signals contributed to the profile. */
 export type ProfileSource = 'userAgent' | 'referrer' | 'requestedWith'
 
+/** Rendering engine family carried by the UA. */
+export type EngineName = 'qtwebengine' | 'electron' | 'chromium' | 'gecko' | 'webkit'
+
+export interface EngineInfo {
+  /** Engine family, or `null` when the UA carries no recognisable engine (e.g. a bot). */
+  name: EngineName | null
+  /**
+   * The version that matters for the support floor: the Chromium major for the Blink
+   * engines (qtwebengine/electron/chromium), the Firefox major for gecko, and the Safari
+   * `Version/` (major.minor) for webkit. `null` when it can't be read.
+   */
+  version: number | null
+}
+
 export interface PlayerProfile {
   /** The identified vendor, or `null` when only a platform (or nothing) could be determined. */
   vendor: PlayerVendor | null
   /** The hardware/OS platform, or `null` when it could not be determined. */
   platform: PlayerPlatform | null
+  /** The device model parsed from the UA (e.g. `XT1144`, `AFTKA`, `MBR-1100`), or `null`. */
+  model: string | null
   category: PlayerCategory
+  /** The rendering engine and its floor-relevant version. */
+  engine: EngineInfo
+  /**
+   * `true` when the engine renders below the build support FLOOR (see `src/build.js`) and
+   * therefore relies on the degraded gate + CSS down-levelling; `false` when at/above it;
+   * `null` when the engine/version is unknown.
+   */
+  belowFloor: boolean | null
   confidence: Confidence
   /** The signals that contributed, e.g. `['userAgent', 'referrer']`. */
   sources: ProfileSource[]
@@ -260,6 +284,58 @@ const classifyReferrer = (referrer: string): RefClass => {
   return none
 }
 
+// Support floor — mirrors FLOOR in src/build.js. Kept in sync by hand because that
+// module pulls build-only deps (esbuild/lightningcss/browserslist) and can't be imported
+// into this runtime module. Below these versions, apps fall back to the degraded gate +
+// LightningCSS down-levelling instead of rendering modern CSS natively.
+const FLOOR_CHROME = 87
+const FLOOR_FIREFOX = 78
+const FLOOR_SAFARI = 14.1
+
+const matchNumber = (ua: string, re: RegExp): number | null => {
+  const m = ua.match(re)
+  return m?.[1] != null ? Number(m[1]) : null
+}
+
+const classifyEngine = (ua: string): { engine: EngineInfo; belowFloor: boolean | null } => {
+  let name: EngineName | null = null
+  if (/QtWebEngine/.test(ua)) name = 'qtwebengine'
+  else if (/Electron\//.test(ua)) name = 'electron'
+  else if (/Firefox\//.test(ua)) name = 'gecko'
+  else if (/Chrome\/|Chromium\//.test(ua)) name = 'chromium'
+  else if (/AppleWebKit|Version\//.test(ua)) name = 'webkit'
+
+  let version: number | null = null
+  let belowFloor: boolean | null = null
+  if (name === 'gecko') {
+    version = matchNumber(ua, /Firefox\/(\d+)/)
+    belowFloor = version == null ? null : version < FLOOR_FIREFOX
+  } else if (name === 'webkit') {
+    version = matchNumber(ua, /Version\/(\d+(?:\.\d+)?)/)
+    belowFloor = version == null ? null : version < FLOOR_SAFARI
+  } else if (name) {
+    // Blink family (qtwebengine/electron/chromium) — the Chromium major is the floor gate.
+    version = matchNumber(ua, /(?:Chrome|Chromium|CriOS)\/(\d+)/)
+    belowFloor = version == null ? null : version < FLOOR_CHROME
+  }
+  return { engine: { name, version }, belowFloor }
+}
+
+const modelFromUserAgent = (ua: string): string | null => {
+  // BrightSign hardware model in parens right after the BrightSign token (e.g. XT1144).
+  const brightsign = ua.match(/BrightSign\/\S+\s+\(([^)]+)\)/)
+  if (brightsign?.[1]) return brightsign[1]
+  // Cisco RoomOS device name (e.g. Cisco Desk Pro).
+  const cisco = ua.match(/RoomOS;\s*([^)]+)\)/)
+  if (cisco?.[1]) return cisco[1].trim()
+  // Android device model: the token before ` Build/`, else before the closing paren.
+  const build = ua.match(/;\s*([^;()]+?)\s+Build\//)
+  if (build?.[1]) return build[1].trim()
+  const android = ua.match(/Android[^;]*;\s*([^;()]+?)\)/)
+  if (android?.[1]) return android[1].trim()
+  return null
+}
+
 // --- public API --------------------------------------------------------------
 
 const CONFIDENCE_RANK: Record<Confidence, number> = { high: 3, medium: 2, low: 1 }
@@ -320,12 +396,16 @@ export const detectPlayer = (
     confidence = 'low'
   }
 
+  const { engine, belowFloor } = classifyEngine(userAgent)
+  const model = modelFromUserAgent(userAgent)
+
   const sources: ProfileSource[] = []
   if (pkgVendor) sources.push('requestedWith')
-  if (ua.vendor || ua.platform || ua.isBot || ua.hasQtWebEngine) sources.push('userAgent')
+  if (ua.vendor || ua.platform || ua.isBot || ua.hasQtWebEngine || engine.name || model)
+    sources.push('userAgent')
   if (ref.vendor || ref.platform) sources.push('referrer')
 
-  return { vendor, platform, category, confidence, sources }
+  return { vendor, platform, model, category, engine, belowFloor, confidence, sources }
 }
 
 /**

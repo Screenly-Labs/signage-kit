@@ -121,6 +121,63 @@ describe('detectPlayer — platform-only (unknown app)', () => {
   })
 })
 
+describe('detectPlayer — engine, belowFloor, model', () => {
+  it('flags BrightSign Chrome 65 as below the floor and reads its model', () => {
+    const p = detectPlayer(UA.brightsign, '')
+    expect(p.engine).toEqual({ name: 'qtwebengine', version: 65 })
+    expect(p.belowFloor).toBe(true)
+    expect(p.model).toBe('XT1144')
+  })
+
+  it('reads the LS424 model from a spaced BrightSign UA', () => {
+    const p = detectPlayer(
+      'BrightSign/8.5.33 (XD234) Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/5.15.2 Chrome/87.0.4280.144 Safari/537.36',
+      '',
+    )
+    expect(p.model).toBe('XD234')
+    expect(p.belowFloor).toBe(false) // Chrome 87 == floor
+  })
+
+  it('marks bare QtWebEngine Chrome 83 below floor (no vendor)', () => {
+    const p = detectPlayer(UA.bareQt, '')
+    expect(p.engine).toEqual({ name: 'qtwebengine', version: 83 })
+    expect(p.belowFloor).toBe(true)
+  })
+
+  it('marks current Anthias (Chrome 122) at/above floor', () => {
+    const p = detectPlayer(UA.anthias, '')
+    expect(p.engine.version).toBe(122)
+    expect(p.belowFloor).toBe(false)
+  })
+
+  it('flags a legacy WebKit viewer (Version/8.0) below floor', () => {
+    const p = detectPlayer(
+      'Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/538.15 (KHTML, like Gecko) Version/8.0 Safari/538.15',
+      '',
+    )
+    expect(p.engine.name).toBe('webkit')
+    expect(p.engine.version).toBe(8)
+    expect(p.belowFloor).toBe(true)
+  })
+
+  it('reads the Android Build model and Fire TV model', () => {
+    expect(detectPlayer(UA.iadea, '').model).toContain('MBR-1100')
+    expect(detectPlayer(UA.yodeckFiretv, '').model).toBe('AFTM')
+  })
+
+  it('classifies Firefox by Gecko version', () => {
+    const p = detectPlayer('Mozilla/5.0 (X11; Linux x86_64; rv:152.0) Gecko/20100101 Firefox/152.0', '')
+    expect(p.engine).toEqual({ name: 'gecko', version: 152 })
+    expect(p.belowFloor).toBe(false)
+  })
+
+  it('leaves engine null / belowFloor null for a non-engine client', () => {
+    const p = detectPlayer(UA.curl, '')
+    expect(p.engine).toEqual({ name: null, version: null })
+    expect(p.belowFloor).toBeNull()
+  })
+})
+
 describe('detectPlayer — robustness', () => {
   it('is prototype-pollution safe on X-Requested-With', () => {
     for (const evil of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {

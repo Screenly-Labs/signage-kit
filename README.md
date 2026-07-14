@@ -155,10 +155,20 @@ import { detectPlayer } from '@screenly-labs/signage-kit/profiler'
 const p = detectPlayer() // reads navigator.userAgent + document.referrer
 // { vendor: 'yodeck' | 'screenly' | 'brightsign' | … | null,
 //   platform: 'firetv' | 'chromeos' | … | null,
+//   model: 'XT1144' | 'AFTKA' | 'MBR-1100' | … | null,   // device model from the UA
 //   category: 'signage' | 'meeting-room' | 'browser' | 'bot',
+//   engine: { name: 'qtwebengine' | 'chromium' | 'webkit' | … | null, version: 87 | null },
+//   belowFloor: true | false | null,                     // renders below the build FLOOR?
 //   confidence: 'high' | 'medium' | 'low',
 //   sources: ['userAgent', 'referrer'] }
 ```
+
+`engine` + `belowFloor` are often the most actionable fields: `belowFloor` is `true` when the
+device's engine renders below the build [`FLOOR`](src/build.js) (Chrome 87 / Safari 14.1 /
+Firefox 78) and therefore leans on the degraded gate + LightningCSS down-levelling rather
+than native modern CSS — a large share of the real fleet (e.g. Chrome 83 QtWebEngine players
+and Chrome 65 BrightSign units) sits there. The floor constants mirror `src/build.js` and are
+kept in sync by hand (that module can't be imported here — it pulls build-only deps).
 
 Called with no arguments in the browser it reads the globals (safe when absent — SSR /
 Workers just get `''`). Two things page JS **cannot** see are worth knowing:
