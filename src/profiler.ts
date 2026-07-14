@@ -95,8 +95,12 @@ const VENDOR_CATEGORY: Record<PlayerVendor, PlayerCategory> = {
 /**
  * Android `X-Requested-With` package name -> vendor. Only usable server-side (the
  * header is not visible to page JS). Also the reference map for the header dump.
+ *
+ * Typed `Partial` because an arbitrary package string may not be present — a lookup
+ * yields `PlayerVendor | undefined`, so callers must handle the miss (see
+ * `vendorFromPackage`). Use that helper rather than indexing this directly.
  */
-export const PACKAGE_VENDORS: Record<string, PlayerVendor> = {
+export const PACKAGE_VENDORS: Readonly<Partial<Record<string, PlayerVendor>>> = {
   'xogo.xogoplayer': 'xogo',
   'com.pisignage.player2': 'pisignage',
   'tv.ablesign.app': 'ablesign',
@@ -336,6 +340,8 @@ export const detectPlayer = (
  */
 export const vendorFromPackage = (requestedWith: string): PlayerVendor | null => {
   const vendor = PACKAGE_VENDORS[requestedWith]
+  // typeof (not just `?? null`): defends against inherited prototype members at runtime,
+  // which the `PlayerVendor | undefined` type cannot express.
   return typeof vendor === 'string' ? vendor : null
 }
 
