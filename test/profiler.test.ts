@@ -306,4 +306,12 @@ describe('detectPlayer — global fallbacks', () => {
     expect(() => detectPlayer()).not.toThrow()
     expect(detectPlayer().vendor).toBeNull()
   })
+
+  it('does not throw when navigator is present but userAgent is missing', () => {
+    Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true, writable: true })
+    expect(() => detectPlayer()).not.toThrow()
+    const p = detectPlayer()
+    expect(p.vendor).toBeNull()
+    expect(p.engine).toEqual({ name: null, version: null })
+  })
 })

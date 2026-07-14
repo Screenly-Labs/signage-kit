@@ -351,8 +351,14 @@ const CONFIDENCE_RANK: Record<Confidence, number> = { high: 3, medium: 2, low: 1
  * Workers). Pass `requestedWith` only where the request header is actually available.
  */
 export const detectPlayer = (
-  userAgent: string = typeof navigator !== 'undefined' ? navigator.userAgent : '',
-  referrer: string = typeof document !== 'undefined' ? document.referrer : '',
+  // `typeof … === 'string'` guards partially-stubbed globals (e.g. an SSR/test
+  // `navigator = {}` where `userAgent` is undefined) so downstream `.match()` never throws.
+  userAgent: string = typeof navigator !== 'undefined' && typeof navigator.userAgent === 'string'
+    ? navigator.userAgent
+    : '',
+  referrer: string = typeof document !== 'undefined' && typeof document.referrer === 'string'
+    ? document.referrer
+    : '',
   requestedWith?: string,
 ): PlayerProfile => {
   const ua = classifyUserAgent(userAgent)

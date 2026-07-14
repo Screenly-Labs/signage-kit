@@ -199,8 +199,10 @@ Notes baked into the classifier: **Anthias** is only claimed on the explicit `An
 UA token — the large bare-`QtWebEngine` bucket is the same engine but is reported as
 `{ vendor: null, category: 'signage', confidence: 'low' }`, never attributed to Anthias.
 **Screenly** detection is the original `screenly-viewer` check, enriched to also match
-`ScreenlyWebview` and `screenly-viewer/2.0`; `isScreenlyPlayer()` from `./branding` now
-delegates here, so the two never drift.
+`ScreenlyWebview` and `screenly-viewer/2.0`. The token set lives in a tiny `screenly-ua`
+leaf module that both this profiler and `./branding` import, so `isScreenlyPlayer()` and
+`detectPlayer()` share one definition (and can't drift) without `./branding` pulling the
+full profiler into its bundle.
 
 ## Supported resolutions
 
