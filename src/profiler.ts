@@ -39,6 +39,7 @@ export type PlayerPlatform =
   | 'firetv'
   | 'android-tv'
   | 'android-webview'
+  | 'android'
   | 'chromeos'
   | 'raspberry-pi'
   | 'webos'
@@ -125,7 +126,8 @@ const UA_VENDORS: ReadonlyArray<readonly [RegExp, PlayerVendor, Confidence]> = [
   [/A-SMIL|ADAPI/, 'iadea', 'high'], // IAdea's SMIL signage API
   [/Slideshow\//, 'slideshow', 'high'],
   [/GoogleMeetRoomDeviceWebViewApp/, 'google-meet', 'high'],
-  [/\bTeams\//, 'ms-teams', 'high'],
+  // Note: no `Teams/` UA rule — the Teams desktop client injects that token on ordinary
+  // laptops, so meeting-room is inferred from the teams.microsoft.com referrer instead.
   [/RoomOS/, 'cisco-roomos', 'high'],
   [/Unifi-Connect/i, 'unifi-connect', 'high'],
   [/WebAppManager|NetCast/, 'lg-webos', 'high'],
@@ -146,7 +148,8 @@ const UA_PLATFORMS: ReadonlyArray<readonly [RegExp, PlayerPlatform]> = [
   [/Web0S|webOS|NetCast/i, 'webos'],
   [/Tizen/, 'tizen'],
   [/onn\.|Chromecast|Realtek|Smart TV|Google TV/i, 'android-tv'],
-  [/Android/i, 'android-webview'],
+  [/;\s*wv\)/, 'android-webview'], // genuine Android WebView app (signage), not mobile Chrome
+  [/Android/i, 'android'], // plain Android — mobile browser
   [/Windows NT/, 'windows'],
   [/iPhone|iPad|iPod/, 'ios'],
   [/Macintosh|Mac OS X/, 'macos'],
@@ -164,6 +167,7 @@ const BROWSER_PLATFORMS: ReadonlySet<PlayerPlatform> = new Set<PlayerPlatform>([
   'macos',
   'ios',
   'linux',
+  'android',
 ])
 
 // --- classifiers -------------------------------------------------------------
@@ -227,20 +231,27 @@ const hostnameOf = (referrer: string): string => {
 const hostMatches = (host: string, domain: string): boolean =>
   host === domain || host.endsWith(`.${domain}`)
 
+// Referrer host (or a subdomain of it) -> vendor. All matched by dot-boundary suffix so
+// there is no exact-vs-suffix asymmetry across entries.
+const REFERRER_VENDORS: ReadonlyArray<readonly [string, PlayerVendor]> = [
+  ['yodeck.com', 'yodeck'],
+  ['pisignage.com', 'pisignage'],
+  ['concerto-signage.org', 'concerto'],
+  ['meet.google.com', 'google-meet'],
+  ['teams.microsoft.com', 'ms-teams'],
+]
+
 const classifyReferrer = (referrer: string): RefClass => {
   const none: RefClass = { vendor: null, vendorConfidence: 'low', platform: null }
   const host = hostnameOf(referrer)
   if (!host) return none
-  // Screenly's own app hosts identify the *content*, not the player — no signal.
+  // The apps' own hosts identify the *content*, not the player — no signal.
   if (hostMatches(host, 'srly.io') || hostMatches(host, 'screenly.io')) return none
-  if (hostMatches(host, 'yodeck.com')) return { vendor: 'yodeck', vendorConfidence: 'high', platform: null }
-  if (hostMatches(host, 'pisignage.com'))
-    return { vendor: 'pisignage', vendorConfidence: 'high', platform: null }
-  if (hostMatches(host, 'concerto-signage.org'))
-    return { vendor: 'concerto', vendorConfidence: 'high', platform: null }
-  if (host === 'meet.google.com') return { vendor: 'google-meet', vendorConfidence: 'high', platform: null }
-  if (host === 'teams.microsoft.com') return { vendor: 'ms-teams', vendorConfidence: 'high', platform: null }
-  if (host === 'appassets.androidplatform.net')
+  for (const [domain, vendor] of REFERRER_VENDORS) {
+    if (hostMatches(host, domain)) return { vendor, vendorConfidence: 'high', platform: null }
+  }
+  // Android WebViewAssetLoader host — platform only, no vendor.
+  if (hostMatches(host, 'androidplatform.net'))
     return { vendor: null, vendorConfidence: 'low', platform: 'android-webview' }
   return none
 }
@@ -262,7 +273,7 @@ export const detectPlayer = (
 ): PlayerProfile => {
   const ua = classifyUserAgent(userAgent)
   const ref = classifyReferrer(referrer)
-  const pkgVendor = requestedWith ? (PACKAGE_VENDORS[requestedWith] ?? null) : null
+  const pkgVendor = requestedWith ? vendorFromPackage(requestedWith) : null
 
   // Resolve the vendor from every signal that produced one, picking the highest
   // confidence. Two independent signals agreeing on a vendor upgrades it to high.
@@ -313,9 +324,13 @@ export const detectPlayer = (
   return { vendor, platform, category, confidence, sources }
 }
 
-/** X-Requested-With package name -> vendor (server-side helper). `null` if unknown. */
+/**
+ * X-Requested-With package name -> vendor (server-side helper). `null` if unknown.
+ * Uses `Object.hasOwn` so attacker-controlled values like `constructor`/`toString` can't
+ * resolve to an inherited `Object.prototype` member.
+ */
 export const vendorFromPackage = (requestedWith: string): PlayerVendor | null =>
-  PACKAGE_VENDORS[requestedWith] ?? null
+  Object.hasOwn(PACKAGE_VENDORS, requestedWith) ? (PACKAGE_VENDORS[requestedWith] ?? null) : null
 
 /**
  * Profile the player from an incoming request's headers — the server-side entry point

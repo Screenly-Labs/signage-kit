@@ -31,6 +31,10 @@ const UA = {
     'Mozilla/5.0 (Linux; RoomOS; Cisco Desk Pro) AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.10.3 Chrome/134.0.6998.208 Safari/537.36',
   teams:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Safari/537.36 Edg/150.0.0.0 Teams/26058.705.4475.8348/51',
+  androidChrome:
+    'Mozilla/5.0 (Linux; Android 12; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+  androidWv:
+    'Mozilla/5.0 (Linux; 14; LH5581UHSG-1AG Build/UP1A.231005.007.A1; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/127.0.6533.103 Safari/537.36',
   desktopEdge:
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0',
   curl: 'curl/8.14.1',
@@ -58,15 +62,24 @@ describe('detectPlayer — UA vendor tokens', () => {
     expect(detectPlayer(UA.screenlyV2, '').vendor).toBe('screenly')
   })
 
-  it('identifies BrightSign, IAdea, LG webOS, Samsung Tizen, Cisco, Teams', () => {
+  it('identifies BrightSign, IAdea, LG webOS, Samsung Tizen, Cisco', () => {
     expect(detectPlayer(UA.brightsign, '').vendor).toBe('brightsign')
     expect(detectPlayer(UA.iadea, '').vendor).toBe('iadea')
     expect(detectPlayer(UA.webos, '').vendor).toBe('lg-webos')
     expect(detectPlayer(UA.tizen, '').vendor).toBe('samsung-tizen')
     expect(detectPlayer(UA.roomos, '').vendor).toBe('cisco-roomos')
-    const teams = detectPlayer(UA.teams, '')
-    expect(teams.vendor).toBe('ms-teams')
-    expect(teams.category).toBe('meeting-room')
+  })
+
+  it('treats the Teams desktop client UA as a browser, not a meeting room', () => {
+    // Teams/ appears in the desktop app UA on ordinary laptops — inferred from referrer instead.
+    const p = detectPlayer(UA.teams, '')
+    expect(p.vendor).toBeNull()
+    expect(p.category).toBe('browser')
+  })
+
+  it('infers MS Teams / Google Meet from the meeting referrer', () => {
+    expect(detectPlayer(UA.desktopEdge, 'https://teams.microsoft.com/').vendor).toBe('ms-teams')
+    expect(detectPlayer(UA.desktopEdge, 'https://meet.google.com/').vendor).toBe('google-meet')
   })
 
   it('reads platform alongside a UA vendor token (Slideshow on Fire TV)', () => {
@@ -93,6 +106,29 @@ describe('detectPlayer — platform-only (unknown app)', () => {
     const p = detectPlayer('Mozilla/5.0 (Windows NT 10.0) SomeApp AFTER Chrome/120 Safari/537.36', '')
     expect(p.platform).not.toBe('firetv')
     expect(p.category).not.toBe('signage')
+  })
+
+  it('classifies ordinary Android mobile Chrome as a browser, not signage', () => {
+    const p = detectPlayer(UA.androidChrome, '')
+    expect(p.platform).toBe('android')
+    expect(p.category).toBe('browser')
+  })
+
+  it('classifies a genuine Android WebView app (; wv) as signage', () => {
+    const p = detectPlayer(UA.androidWv, '')
+    expect(p.platform).toBe('android-webview')
+    expect(p.category).toBe('signage')
+  })
+})
+
+describe('detectPlayer — robustness', () => {
+  it('is prototype-pollution safe on X-Requested-With', () => {
+    for (const evil of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+      const p = detectPlayer(UA.androidChrome, '', evil)
+      expect(p.vendor).toBeNull()
+      expect(p.category).toBe('browser') // defined, never undefined
+      expect(vendorFromPackage(evil)).toBeNull()
+    }
   })
 })
 
