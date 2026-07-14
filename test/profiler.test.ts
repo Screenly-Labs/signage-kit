@@ -88,6 +88,12 @@ describe('detectPlayer — platform-only (unknown app)', () => {
   it('reports Chrome OS', () => {
     expect(detectPlayer(UA.chromeos, '').platform).toBe('chromeos')
   })
+
+  it('does not treat the word AFTER as a Fire TV device', () => {
+    const p = detectPlayer('Mozilla/5.0 (Windows NT 10.0) SomeApp AFTER Chrome/120 Safari/537.36', '')
+    expect(p.platform).not.toBe('firetv')
+    expect(p.category).not.toBe('signage')
+  })
 })
 
 describe('detectPlayer — referrer recovers runtime blind spots', () => {
@@ -109,6 +115,16 @@ describe('detectPlayer — referrer recovers runtime blind spots', () => {
     const p = detectPlayer(UA.bareQt, 'https://weather.srly.io/')
     expect(p.vendor).toBeNull()
     expect(p.sources).not.toContain('referrer')
+  })
+
+  it('does not match look-alike hosts (dot boundary)', () => {
+    expect(detectPlayer(UA.bareQt, 'https://evilyodeck.com/').vendor).toBeNull()
+    // an unrelated host merely ending in srly.io must NOT be treated as an app host
+    expect(detectPlayer(UA.bareQt, 'https://player.yodeck.com.notsrly.io/').vendor).toBeNull()
+  })
+
+  it('recovers a schemeless referrer with a path', () => {
+    expect(detectPlayer(UA.bareQt, 'player.yodeck.com/display/123').vendor).toBe('yodeck')
   })
 })
 

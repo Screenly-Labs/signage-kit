@@ -100,6 +100,8 @@ export const PACKAGE_VENDORS: Record<string, PlayerVendor> = {
   'com.pisignage.player2': 'pisignage',
   'tv.ablesign.app': 'ablesign',
   'com.iadea.player': 'iadea',
+  // Yodeck's Fire OS build ships with Android's `com.example.*` placeholder namespace;
+  // this is the exact id observed in traffic, not a stand-in for a "real" package.
   'com.example.yodeck_fireos': 'yodeck',
   'sk.mimac.slideshow': 'slideshow',
   'com.harison.adver': 'harison',
@@ -107,10 +109,17 @@ export const PACKAGE_VENDORS: Record<string, PlayerVendor> = {
   'com.google.android.apps.notrod.webviewapp': 'google-meet',
 }
 
+/**
+ * Screenly player UA tokens — the original `screenly-viewer` check, enriched to also
+ * match `ScreenlyWebview` and (via the shared `-viewer` token) `screenly-viewer/2.0`.
+ * Case-sensitive on purpose: these are the exact tokens devices emit, and `./branding`
+ * reuses this constant so `isScreenlyPlayer()` stays a single cheap regex test.
+ */
+export const SCREENLY_UA = /screenly-viewer|ScreenlyWebview/
+
 // UA product tokens -> vendor (first match wins). Ordered most-specific first.
 const UA_VENDORS: ReadonlyArray<readonly [RegExp, PlayerVendor, Confidence]> = [
-  // Screenly: the existing screenly-viewer check, enriched (see ./branding).
-  [/screenly-viewer|ScreenlyWebview/i, 'screenly', 'high'],
+  [SCREENLY_UA, 'screenly', 'high'],
   [/Anthias\//, 'anthias', 'high'], // ONLY on the explicit token — never inferred
   [/BrightSign\//, 'brightsign', 'high'],
   [/A-SMIL|ADAPI/, 'iadea', 'high'], // IAdea's SMIL signage API
@@ -129,7 +138,9 @@ const UA_VENDORS: ReadonlyArray<readonly [RegExp, PlayerVendor, Confidence]> = [
 // UA platform tokens -> platform (first match wins). Order matters: Fire TV and
 // Chrome OS UAs also contain generic Android/Linux markers, so they come first.
 const UA_PLATFORMS: ReadonlyArray<readonly [RegExp, PlayerPlatform]> = [
-  [/\bAFT[A-Z]{1,4}\b/, 'firetv'],
+  // Amazon device model id in the Build position (e.g. `AFTKA Build/…`). The `Build/`
+  // anchor keeps ordinary all-caps words like `AFTER` from matching.
+  [/\bAFT[A-Z0-9]{1,6}\s+Build\//, 'firetv'],
   [/\bCrOS\b/, 'chromeos'],
   [/Raspbian/, 'raspberry-pi'],
   [/Web0S|webOS|NetCast/i, 'webos'],
@@ -145,15 +156,14 @@ const UA_PLATFORMS: ReadonlyArray<readonly [RegExp, PlayerPlatform]> = [
 const UA_BOT =
   /bot\b|crawler|spider|slurp|curl|wget|python-requests|Go-http-client|HeadlessChrome|PhantomJS|GPTBot|ClaudeBot|Applebot|AdsBot-Google|GoogleOther|Googlebot|bingbot|BitSightBot|Bytespider|pathscan|Palo Alto Networks|Cortex-Xpanse|StatusCake|CMS-Checker|facebookexternalhit|Lavf|AppleCoreMedia|Amazon Music/i
 
-// Platforms that, absent a vendor, still indicate a signage-capable device.
-const SIGNAGE_PLATFORMS: ReadonlySet<PlayerPlatform> = new Set<PlayerPlatform>([
-  'firetv',
-  'android-tv',
-  'android-webview',
-  'chromeos',
-  'raspberry-pi',
-  'webos',
-  'tizen',
+// Ordinary personal-computing platforms. Any other recognised platform is treated as a
+// signage-capable device when no vendor is identified — so a new signage platform added
+// to PlayerPlatform / UA_PLATFORMS defaults to signage without a second list to update.
+const BROWSER_PLATFORMS: ReadonlySet<PlayerPlatform> = new Set<PlayerPlatform>([
+  'windows',
+  'macos',
+  'ios',
+  'linux',
 ])
 
 // --- classifiers -------------------------------------------------------------
@@ -201,23 +211,32 @@ interface RefClass {
 
 const hostnameOf = (referrer: string): string => {
   if (!referrer) return ''
-  try {
-    return new URL(referrer).hostname.toLowerCase()
-  } catch {
-    return referrer.toLowerCase()
+  const parse = (s: string): string | null => {
+    try {
+      return new URL(s).hostname.toLowerCase()
+    } catch {
+      return null
+    }
   }
+  // Retry with a scheme so a schemeless referrer with a path (`host.com/x`) still parses.
+  return parse(referrer) ?? parse(`https://${referrer}`) ?? ''
 }
+
+// True when `host` is `domain` or a subdomain of it — the dot boundary stops
+// `evilyodeck.com` from matching `yodeck.com` or `notsrly.io` from matching `srly.io`.
+const hostMatches = (host: string, domain: string): boolean =>
+  host === domain || host.endsWith(`.${domain}`)
 
 const classifyReferrer = (referrer: string): RefClass => {
   const none: RefClass = { vendor: null, vendorConfidence: 'low', platform: null }
   const host = hostnameOf(referrer)
   if (!host) return none
   // Screenly's own app hosts identify the *content*, not the player — no signal.
-  if (host.endsWith('srly.io') || host.endsWith('screenly.io')) return none
-  if (host.endsWith('yodeck.com')) return { vendor: 'yodeck', vendorConfidence: 'high', platform: null }
-  if (host === 'pisignage.com' || host.endsWith('.pisignage.com'))
+  if (hostMatches(host, 'srly.io') || hostMatches(host, 'screenly.io')) return none
+  if (hostMatches(host, 'yodeck.com')) return { vendor: 'yodeck', vendorConfidence: 'high', platform: null }
+  if (hostMatches(host, 'pisignage.com'))
     return { vendor: 'pisignage', vendorConfidence: 'high', platform: null }
-  if (host.endsWith('concerto-signage.org'))
+  if (hostMatches(host, 'concerto-signage.org'))
     return { vendor: 'concerto', vendorConfidence: 'high', platform: null }
   if (host === 'meet.google.com') return { vendor: 'google-meet', vendorConfidence: 'high', platform: null }
   if (host === 'teams.microsoft.com') return { vendor: 'ms-teams', vendorConfidence: 'high', platform: null }
@@ -247,10 +266,10 @@ export const detectPlayer = (
 
   // Resolve the vendor from every signal that produced one, picking the highest
   // confidence. Two independent signals agreeing on a vendor upgrades it to high.
-  const candidates: Array<{ vendor: PlayerVendor; confidence: Confidence; source: ProfileSource }> = []
-  if (pkgVendor) candidates.push({ vendor: pkgVendor, confidence: 'high', source: 'requestedWith' })
-  if (ua.vendor) candidates.push({ vendor: ua.vendor, confidence: ua.vendorConfidence, source: 'userAgent' })
-  if (ref.vendor) candidates.push({ vendor: ref.vendor, confidence: ref.vendorConfidence, source: 'referrer' })
+  const candidates: Array<{ vendor: PlayerVendor; confidence: Confidence }> = []
+  if (pkgVendor) candidates.push({ vendor: pkgVendor, confidence: 'high' })
+  if (ua.vendor) candidates.push({ vendor: ua.vendor, confidence: ua.vendorConfidence })
+  if (ref.vendor) candidates.push({ vendor: ref.vendor, confidence: ref.vendorConfidence })
 
   let vendor: PlayerVendor | null = null
   let confidence: Confidence = 'low'
@@ -272,7 +291,7 @@ export const detectPlayer = (
   } else if (ua.isBot) {
     category = 'bot'
     confidence = 'high'
-  } else if (platform && SIGNAGE_PLATFORMS.has(platform)) {
+  } else if (platform && !BROWSER_PLATFORMS.has(platform)) {
     category = 'signage'
     confidence = 'low' // platform-only: signage-capable device, unknown app
   } else if (ua.hasQtWebEngine) {
