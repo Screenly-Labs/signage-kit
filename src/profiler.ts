@@ -383,7 +383,9 @@ export const detectPlayer = (
     if (candidates.filter((c) => c.vendor === vendor).length >= 2) confidence = 'high'
   }
 
-  const platform = ua.platform ?? ref.platform ?? null
+  // X-Requested-With is only emitted by Android WebViews, so a recognised package with no
+  // platform from the UA/referrer still implies android-webview (server-side-only case).
+  const platform = ua.platform ?? ref.platform ?? (pkgVendor ? 'android-webview' : null)
 
   // Category, and the confidence for the vendor-less cases.
   let category: PlayerCategory

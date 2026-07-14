@@ -235,6 +235,12 @@ describe('detectPlayer — three-way corroboration & headers', () => {
     expect(p.platform).toBe('firetv')
   })
 
+  it('defaults platform to android-webview for a package with no UA/referrer platform', () => {
+    const p = detectPlayer('', '', 'com.pisignage.player2')
+    expect(p.vendor).toBe('pisignage')
+    expect(p.platform).toBe('android-webview')
+  })
+
   it('vendorFromPackage maps known packages and null otherwise', () => {
     expect(vendorFromPackage('com.pisignage.player2')).toBe('pisignage')
     expect(vendorFromPackage('com.unknown.app')).toBeNull()

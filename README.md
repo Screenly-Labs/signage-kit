@@ -187,8 +187,13 @@ Workers just get `''`). Two things page JS **cannot** see are worth knowing:
 
   ```ts
   import { detectPlayerFromRequest } from '@screenly-labs/signage-kit/profiler'
-  // Cloudflare Worker / Hono
-  export default { fetch: (req: Request) => { const player = detectPlayerFromRequest(req); /* … */ } }
+  // Cloudflare Worker
+  export default {
+    fetch(req: Request): Response {
+      const player = detectPlayerFromRequest(req)
+      return new Response(JSON.stringify(player), { headers: { 'content-type': 'application/json' } })
+    },
+  }
   ```
 - **Referrers to the app's own `*.srly.io` hosts identify the *content*, not the player,**
   so they're ignored. Referrer's value is recovering players the UA hides — e.g.
