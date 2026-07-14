@@ -120,23 +120,29 @@ const VENDOR_CATEGORY: Record<PlayerVendor, PlayerCategory> = {
  * Android `X-Requested-With` package name -> vendor. Only usable server-side (the
  * header is not visible to page JS). Also the reference map for the header dump.
  *
- * Typed `Partial` because an arbitrary package string may not be present — a lookup
- * yields `PlayerVendor | undefined`, so callers must handle the miss (see
- * `vendorFromPackage`). Use that helper rather than indexing this directly.
+ * A frozen, null-prototype map: with no `Object.prototype` chain, a lookup with an
+ * arbitrary/hostile key (`constructor`, `__proto__`, or a value planted on the prototype)
+ * can only ever hit an own entry, never an inherited member — so package lookups are
+ * own-property-safe by construction and the map can't be mutated by consumers. Typed
+ * `Partial` because an arbitrary package may be absent; use `vendorFromPackage` rather
+ * than indexing directly. (`Object.create`/`assign`/`freeze` are all ES5/ES6 — safe on
+ * the kit's old-engine floor.)
  */
-export const PACKAGE_VENDORS: Readonly<Partial<Record<string, PlayerVendor>>> = {
-  'xogo.xogoplayer': 'xogo',
-  'com.pisignage.player2': 'pisignage',
-  'tv.ablesign.app': 'ablesign',
-  'com.iadea.player': 'iadea',
-  // Yodeck's Fire OS build ships with Android's `com.example.*` placeholder namespace;
-  // this is the exact id observed in traffic, not a stand-in for a "real" package.
-  'com.example.yodeck_fireos': 'yodeck',
-  'sk.mimac.slideshow': 'slideshow',
-  'com.harison.adver': 'harison',
-  'us.zoom.zoompresence': 'zoom',
-  'com.google.android.apps.notrod.webviewapp': 'google-meet',
-}
+export const PACKAGE_VENDORS: Readonly<Partial<Record<string, PlayerVendor>>> = Object.freeze(
+  Object.assign(Object.create(null) as Partial<Record<string, PlayerVendor>>, {
+    'xogo.xogoplayer': 'xogo',
+    'com.pisignage.player2': 'pisignage',
+    'tv.ablesign.app': 'ablesign',
+    'com.iadea.player': 'iadea',
+    // Yodeck's Fire OS build ships with Android's `com.example.*` placeholder namespace;
+    // this is the exact id observed in traffic, not a stand-in for a "real" package.
+    'com.example.yodeck_fireos': 'yodeck',
+    'sk.mimac.slideshow': 'slideshow',
+    'com.harison.adver': 'harison',
+    'us.zoom.zoompresence': 'zoom',
+    'com.google.android.apps.notrod.webviewapp': 'google-meet',
+  } satisfies Partial<Record<string, PlayerVendor>>),
+)
 
 /**
  * Screenly player UA tokens — the original `screenly-viewer` check, enriched to also
@@ -410,20 +416,11 @@ export const detectPlayer = (
 
 /**
  * X-Requested-With package name -> vendor (server-side helper). `null` if unknown.
- *
- * Guards on the value's type rather than an own-property check: attacker-controlled
- * values like `constructor`/`toString` resolve to inherited `Object.prototype` members,
- * which are functions, so `typeof === 'string'` rejects them while every real entry (a
- * string vendor id) passes. This avoids both prototype-pollution AND `Object.hasOwn`
- * (ES2022) — the kit's support floor includes old signage engines (Chrome 65+ BrightSign)
- * that predate it, and the build does not polyfill runtime APIs.
+ * Own-property-safe against hostile keys because `PACKAGE_VENDORS` is a null-prototype map
+ * (no inherited members on the lookup path) — see its docs.
  */
-export const vendorFromPackage = (requestedWith: string): PlayerVendor | null => {
-  const vendor = PACKAGE_VENDORS[requestedWith]
-  // typeof (not just `?? null`): defends against inherited prototype members at runtime,
-  // which the `PlayerVendor | undefined` type cannot express.
-  return typeof vendor === 'string' ? vendor : null
-}
+export const vendorFromPackage = (requestedWith: string): PlayerVendor | null =>
+  PACKAGE_VENDORS[requestedWith] ?? null
 
 /**
  * Profile the player from an incoming request's headers — the server-side entry point
