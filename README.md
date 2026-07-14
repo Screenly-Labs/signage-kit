@@ -167,6 +167,19 @@ Workers just get `''`). Two things page JS **cannot** see are worth knowing:
   third, optional argument for server-side callers (a Worker/SSR that has the header):
   `detectPlayer(ua, referer, requestedWith)`. `vendorFromPackage(pkg)` maps a package on
   its own. At runtime the profiler works from UA + referrer only.
+
+  On the server, use `detectPlayerFromRequest(request)` — it reads `User-Agent`, `Referer`,
+  and `X-Requested-With` off the request and factors in whichever are present, so the
+  Worker apps (e.g. `weather`, `clock`) get the full three-signal profile while a static
+  app just gets UA + referrer. Prefer it over the no-arg form on a Worker, where the
+  `navigator`/`document` globals describe the runtime (`navigator.userAgent` is
+  `"Cloudflare-Workers"`), not the visitor.
+
+  ```ts
+  import { detectPlayerFromRequest } from '@screenly-labs/signage-kit/profiler'
+  // Cloudflare Worker / Hono
+  export default { fetch: (req: Request) => { const player = detectPlayerFromRequest(req); /* … */ } }
+  ```
 - **Referrers to the app's own `*.srly.io` hosts identify the *content*, not the player,**
   so they're ignored. Referrer's value is recovering players the UA hides — e.g.
   `player.yodeck.com` (Yodeck buried in a generic Fire TV UA) or `pisignage.com` (piSignage

@@ -297,3 +297,23 @@ export const detectPlayer = (
 /** X-Requested-With package name -> vendor (server-side helper). `null` if unknown. */
 export const vendorFromPackage = (requestedWith: string): PlayerVendor | null =>
   PACKAGE_VENDORS[requestedWith] ?? null
+
+/**
+ * Profile the player from an incoming request's headers — the server-side entry point
+ * for Cloudflare Workers / SSR, where all three signals are available on the request:
+ * `User-Agent`, `Referer`, and the Android WebView `X-Requested-With` package. Accepts
+ * anything with a `Headers` (a `Request`, or a Hono `c.req.raw`).
+ *
+ * Prefer this over the no-argument `detectPlayer()` on the server: in a Worker the
+ * `navigator`/`document` globals describe the Worker runtime, not the visitor (e.g.
+ * `navigator.userAgent` is `"Cloudflare-Workers"`), so the no-arg form would profile
+ * the wrong thing.
+ */
+export const detectPlayerFromRequest = (request: { headers: Headers }): PlayerProfile => {
+  const { headers } = request
+  return detectPlayer(
+    headers.get('user-agent') ?? '',
+    headers.get('referer') ?? '',
+    headers.get('x-requested-with') ?? undefined,
+  )
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it, afterEach } from 'bun:test'
-import { detectPlayer, vendorFromPackage, PACKAGE_VENDORS } from '../src/profiler'
+import { detectPlayer, detectPlayerFromRequest, vendorFromPackage, PACKAGE_VENDORS } from '../src/profiler'
 
 // Real UAs sampled from the Screenly-Labs traffic dumps.
 const UA = {
@@ -130,6 +130,35 @@ describe('detectPlayer — three-way corroboration & headers', () => {
     expect(vendorFromPackage('com.pisignage.player2')).toBe('pisignage')
     expect(vendorFromPackage('com.unknown.app')).toBeNull()
     expect(Object.keys(PACKAGE_VENDORS).length).toBeGreaterThan(0)
+  })
+})
+
+describe('detectPlayerFromRequest — server-side (Workers/SSR)', () => {
+  const req = (h: Record<string, string>) => ({ headers: new Headers(h) })
+
+  it('factors in X-Requested-With when the request carries it', () => {
+    const p = detectPlayerFromRequest(
+      req({
+        'user-agent': UA.xogoFiretv,
+        'x-requested-with': 'xogo.xogoplayer',
+      }),
+    )
+    expect(p.vendor).toBe('xogo') // recovered from the header — invisible at runtime
+    expect(p.platform).toBe('firetv')
+    expect(p.sources).toContain('requestedWith')
+  })
+
+  it('degrades gracefully to UA + referer when no header is present', () => {
+    const p = detectPlayerFromRequest(
+      req({ 'user-agent': UA.yodeckFiretv, referer: 'https://player.yodeck.com/' }),
+    )
+    expect(p.vendor).toBe('yodeck')
+    expect(p.sources).toEqual(['userAgent', 'referrer'])
+  })
+
+  it('handles an empty request without throwing', () => {
+    const p = detectPlayerFromRequest(req({}))
+    expect(p.vendor).toBeNull()
   })
 })
 
