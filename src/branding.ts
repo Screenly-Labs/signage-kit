@@ -1,15 +1,24 @@
 // Shared "is this a Screenly player?" check and the promotional-badge remover,
 // used by every signage app. On a Screenly player the viewer is already a
 // Screenly customer, so the promotional badge is removed; every other browser
-// keeps it. The 'screenly-viewer' token in the user agent marks these devices.
+// keeps it. Screenly players are marked by a token in the user agent.
 //
 // This replaces the ~14 byte-identical copies of removeScreenlyBranding() that
 // were pasted into each app's browser entry. Imported into main.ts and bundled
 // by the app (esbuild lowers the modern syntax), exactly like ./polyfills.
 
-/** True when running on a Screenly player (its UA carries `screenly-viewer`). */
+import { SCREENLY_UA } from './screenly-ua'
+
+/**
+ * True when running on a Screenly player. Uses the shared `SCREENLY_UA` token set (one
+ * cheap regex — no full profile, no referrer parse) from the tiny `./screenly-ua` leaf
+ * module, so the badge path never pulls in the full profiler. Enriches the original
+ * `screenly-viewer` check to also recognise `ScreenlyWebview` and `screenly-viewer/2.0`.
+ */
 export const isScreenlyPlayer = (): boolean =>
-  typeof navigator !== 'undefined' && navigator.userAgent.includes('screenly-viewer')
+  typeof navigator !== 'undefined' &&
+  typeof navigator.userAgent === 'string' &&
+  SCREENLY_UA.test(navigator.userAgent)
 
 /**
  * Remove the promotional Screenly badge on Screenly players. No-op elsewhere.

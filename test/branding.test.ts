@@ -27,6 +27,16 @@ describe('isScreenlyPlayer', () => {
     expect(isScreenlyPlayer()).toBe(true)
   })
 
+  it('is true for the ScreenlyWebview UA variant', () => {
+    setUA('Mozilla/5.0 (Unknown; Linux) AppleWebKit/538.1 (KHTML, like Gecko) ScreenlyWebview Safari/538.1')
+    expect(isScreenlyPlayer()).toBe(true)
+  })
+
+  it('is true for the bare screenly-viewer token (no version)', () => {
+    setUA('Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) screenly-viewer Safari/537.36')
+    expect(isScreenlyPlayer()).toBe(true)
+  })
+
   it('is false for an ordinary browser UA', () => {
     setUA('Mozilla/5.0 (X11; Linux) Chrome/120 Safari/537.36')
     expect(isScreenlyPlayer()).toBe(false)

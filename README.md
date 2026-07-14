@@ -28,6 +28,7 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/gate` | `GATE` only, with **no build deps** — safe to import from a Worker SSR template |
 | `@screenly-labs/signage-kit/polyfills` | the `replaceChildren` shim (import for side effect, first line of your entry) |
 | `@screenly-labs/signage-kit/branding` | `isScreenlyPlayer()`, `removeScreenlyBranding()` — hide the promo badge on Screenly players |
+| `@screenly-labs/signage-kit/profiler` | `detectPlayer()`, `detectPlayerFromRequest()`, `vendorFromPackage()` — identify which player/device a request comes from |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
 | `@screenly-labs/signage-kit/styles/fonts.css` | `@font-face` for the canonical webfont set (Fraunces, Hanken Grotesk, Bricolage, Newsreader, Space Mono, JetBrains Mono) |
@@ -140,6 +141,73 @@ override only these, never restate the clamp:
 ```css
 :root { --root-min: 17px; --root-gain: 1.05; --root-max: 56px; }
 ```
+
+## Player profiler
+
+`detectPlayer()` identifies which signage player (or non-player) a request comes from,
+using the three signals a device leaks: the **user agent**, the **referrer**, and — server
+side only — the Android WebView **`X-Requested-With`** package name. It returns a structured
+profile rather than a single flag:
+
+```ts
+import { detectPlayer } from '@screenly-labs/signage-kit/profiler'
+
+const p = detectPlayer() // reads navigator.userAgent + document.referrer
+// { vendor: 'yodeck' | 'screenly' | 'brightsign' | … | null,
+//   platform: 'firetv' | 'chromeos' | … | null,
+//   model: 'XT1144' | 'AFTKA' | 'MBR-1100' | … | null,   // device model from the UA
+//   category: 'signage' | 'meeting-room' | 'browser' | 'bot',
+//   engine: { name: 'qtwebengine' | 'chromium' | 'webkit' | … | null, version: 87 | null },
+//   belowFloor: true | false | null,                     // renders below the build FLOOR?
+//   confidence: 'high' | 'medium' | 'low',
+//   sources: ['userAgent', 'referrer'] }
+```
+
+`engine` + `belowFloor` are often the most actionable fields: `belowFloor` is `true` when the
+device's engine renders below the build [`FLOOR`](src/build.js) (Chrome 87 / Safari 14.1 /
+Firefox 78) and therefore leans on the degraded gate + LightningCSS down-levelling rather
+than native modern CSS — a large share of the real fleet (e.g. Chrome 83 QtWebEngine players
+and Chrome 65 BrightSign units) sits there. The floor constants mirror `src/build.js` and are
+kept in sync by hand (that module can't be imported here — it pulls build-only deps).
+
+Called with no arguments in the browser it reads the globals (safe when absent — SSR /
+Workers just get `''`). Two things page JS **cannot** see are worth knowing:
+
+- **Request headers are not exposed to page JS.** The `X-Requested-With` package is a
+  third, optional argument for server-side callers (a Worker/SSR that has the header):
+  `detectPlayer(ua, referrer, requestedWith)`. `vendorFromPackage(pkg)` maps a package on
+  its own. At runtime the profiler works from UA + referrer only.
+
+  On the server, use `detectPlayerFromRequest(request)` — it reads `User-Agent`, `Referer`,
+  and `X-Requested-With` off the request and factors in whichever are present, so the
+  Worker apps (e.g. `weather`, `clock`) get the full three-signal profile while a static
+  app just gets UA + referrer. Prefer it over the no-arg form on a Worker, where the
+  `navigator`/`document` globals describe the runtime (`navigator.userAgent` is
+  `"Cloudflare-Workers"`), not the visitor.
+
+  ```ts
+  import { detectPlayerFromRequest } from '@screenly-labs/signage-kit/profiler'
+  // Cloudflare Worker
+  export default {
+    fetch(req: Request): Response {
+      const player = detectPlayerFromRequest(req)
+      return new Response(JSON.stringify(player), { headers: { 'content-type': 'application/json' } })
+    },
+  }
+  ```
+- **Referrers to the app's own `*.srly.io` hosts identify the *content*, not the player,**
+  so they're ignored. Instead, the referrer helps recover a vendor the UA hides — e.g.
+  `player.yodeck.com` (Yodeck buried in a generic Fire TV UA) or `pisignage.com` (piSignage
+  sends no UA token at all).
+
+Notes baked into the classifier: **Anthias** is only claimed on the explicit `Anthias/`
+UA token — the large bare-`QtWebEngine` bucket is the same engine but is reported as
+`{ vendor: null, category: 'signage', confidence: 'low' }`, never attributed to Anthias.
+**Screenly** detection is the original `screenly-viewer` check, enriched to also match
+`ScreenlyWebview` and `screenly-viewer/2.0`. The token set lives in a tiny `screenly-ua`
+leaf module that both this profiler and `./branding` import, so `isScreenlyPlayer()` and
+`detectPlayer()` share one definition (and can't drift) without `./branding` pulling the
+full profiler into its bundle.
 
 ## Supported resolutions
 
