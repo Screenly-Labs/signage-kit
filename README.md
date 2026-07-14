@@ -28,7 +28,7 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/gate` | `GATE` only, with **no build deps** — safe to import from a Worker SSR template |
 | `@screenly-labs/signage-kit/polyfills` | the `replaceChildren` shim (import for side effect, first line of your entry) |
 | `@screenly-labs/signage-kit/branding` | `isScreenlyPlayer()`, `removeScreenlyBranding()` — hide the promo badge on Screenly players |
-| `@screenly-labs/signage-kit/profiler` | `detectPlayer()`, `vendorFromPackage()` — identify which player/device a request comes from |
+| `@screenly-labs/signage-kit/profiler` | `detectPlayer()`, `detectPlayerFromRequest()`, `vendorFromPackage()` — identify which player/device a request comes from |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
 | `@screenly-labs/signage-kit/styles/fonts.css` | `@font-face` for the canonical webfont set (Fraunces, Hanken Grotesk, Bricolage, Newsreader, Space Mono, JetBrains Mono) |

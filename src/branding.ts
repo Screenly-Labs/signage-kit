@@ -7,13 +7,13 @@
 // were pasted into each app's browser entry. Imported into main.ts and bundled
 // by the app (esbuild lowers the modern syntax), exactly like ./polyfills.
 
-import { SCREENLY_UA } from './profiler'
+import { SCREENLY_UA } from './screenly-ua'
 
 /**
- * True when running on a Screenly player. Uses the shared `SCREENLY_UA` token set from
- * the profiler (one cheap regex — no full profile, no referrer parse), which enriches
- * the original `screenly-viewer` check to also recognise `ScreenlyWebview` and the
- * versioned `screenly-viewer/2.0`.
+ * True when running on a Screenly player. Uses the shared `SCREENLY_UA` token set (one
+ * cheap regex — no full profile, no referrer parse) from the tiny `./screenly-ua` leaf
+ * module, so the badge path never pulls in the full profiler. Enriches the original
+ * `screenly-viewer` check to also recognise `ScreenlyWebview` and `screenly-viewer/2.0`.
  */
 export const isScreenlyPlayer = (): boolean =>
   typeof navigator !== 'undefined' && SCREENLY_UA.test(navigator.userAgent)

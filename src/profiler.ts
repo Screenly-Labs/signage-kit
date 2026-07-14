@@ -13,6 +13,12 @@
 // request's own headers are not exposed to page JS, so the `requestedWith` argument
 // is for server-side callers (Workers/SSR) that do have the header.
 
+import { SCREENLY_UA } from './screenly-ua'
+
+// Re-exported so `@screenly-labs/signage-kit/profiler` keeps exposing SCREENLY_UA; the
+// canonical definition lives in ./screenly-ua so ./branding can import it without ./profiler.
+export { SCREENLY_UA } from './screenly-ua'
+
 /** Known player / device vendors. */
 export type PlayerVendor =
   | 'screenly'
@@ -143,14 +149,6 @@ export const PACKAGE_VENDORS: Readonly<Partial<Record<string, PlayerVendor>>> = 
     'com.google.android.apps.notrod.webviewapp': 'google-meet',
   } satisfies Partial<Record<string, PlayerVendor>>),
 )
-
-/**
- * Screenly player UA tokens — the original `screenly-viewer` check, enriched to also
- * match `ScreenlyWebview` and (via the shared `-viewer` token) `screenly-viewer/2.0`.
- * Case-sensitive on purpose: these are the exact tokens devices emit, and `./branding`
- * reuses this constant so `isScreenlyPlayer()` stays a single cheap regex test.
- */
-export const SCREENLY_UA = /screenly-viewer|ScreenlyWebview/
 
 // UA product tokens -> vendor (first match wins). Ordered most-specific first.
 const UA_VENDORS: ReadonlyArray<readonly [RegExp, PlayerVendor, Confidence]> = [
