@@ -16,7 +16,9 @@ import { SCREENLY_UA } from './screenly-ua'
  * `screenly-viewer` check to also recognise `ScreenlyWebview` and `screenly-viewer/2.0`.
  */
 export const isScreenlyPlayer = (): boolean =>
-  typeof navigator !== 'undefined' && SCREENLY_UA.test(navigator.userAgent)
+  typeof navigator !== 'undefined' &&
+  typeof navigator.userAgent === 'string' &&
+  SCREENLY_UA.test(navigator.userAgent)
 
 /**
  * Remove the promotional Screenly badge on Screenly players. No-op elsewhere.

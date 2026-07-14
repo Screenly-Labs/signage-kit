@@ -364,6 +364,10 @@ export const detectPlayer = (
   const ua = classifyUserAgent(userAgent)
   const ref = classifyReferrer(referrer)
   const pkgVendor = requestedWith ? vendorFromPackage(requestedWith) : null
+  // A reverse-DNS package name in X-Requested-With marks an Android WebView, even when the
+  // package is unknown. The shape check excludes the classic `X-Requested-With:
+  // XMLHttpRequest` AJAX value (no dots), which is not an Android package.
+  const isAndroidWebView = requestedWith != null && /^[a-z]\w*(?:\.\w+)+$/i.test(requestedWith)
 
   // Resolve the vendor from every signal that produced one, picking the highest
   // confidence. Two independent signals agreeing on a vendor upgrades it to high.
@@ -383,9 +387,9 @@ export const detectPlayer = (
     if (candidates.filter((c) => c.vendor === vendor).length >= 2) confidence = 'high'
   }
 
-  // X-Requested-With is only emitted by Android WebViews, so a recognised package with no
-  // platform from the UA/referrer still implies android-webview (server-side-only case).
-  const platform = ua.platform ?? ref.platform ?? (pkgVendor ? 'android-webview' : null)
+  // An Android WebView package with no platform from the UA/referrer still implies
+  // android-webview (server-side-only case), whether or not the package maps to a vendor.
+  const platform = ua.platform ?? ref.platform ?? (isAndroidWebView ? 'android-webview' : null)
 
   // Category, and the confidence for the vendor-less cases.
   let category: PlayerCategory
@@ -412,7 +416,7 @@ export const detectPlayer = (
   const model = modelFromUserAgent(userAgent)
 
   const sources: ProfileSource[] = []
-  if (pkgVendor) sources.push('requestedWith')
+  if (pkgVendor || isAndroidWebView) sources.push('requestedWith')
   if (ua.vendor || ua.platform || ua.isBot || ua.hasQtWebEngine || engine.name || model)
     sources.push('userAgent')
   if (ref.vendor || ref.platform) sources.push('referrer')

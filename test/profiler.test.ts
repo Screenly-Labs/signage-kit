@@ -241,6 +241,20 @@ describe('detectPlayer — three-way corroboration & headers', () => {
     expect(p.platform).toBe('android-webview')
   })
 
+  it('infers android-webview from an unknown package and records the source', () => {
+    const p = detectPlayer('', '', 'com.unknown.player')
+    expect(p.vendor).toBeNull()
+    expect(p.platform).toBe('android-webview')
+    expect(p.sources).toContain('requestedWith')
+  })
+
+  it('does not treat X-Requested-With: XMLHttpRequest as an Android WebView', () => {
+    const p = detectPlayer(UA.desktopEdge, '', 'XMLHttpRequest')
+    expect(p.platform).toBe('windows') // from the UA, not android-webview
+    expect(p.category).toBe('browser')
+    expect(p.sources).not.toContain('requestedWith')
+  })
+
   it('vendorFromPackage maps known packages and null otherwise', () => {
     expect(vendorFromPackage('com.pisignage.player2')).toBe('pisignage')
     expect(vendorFromPackage('com.unknown.app')).toBeNull()
