@@ -164,9 +164,10 @@ const UA_VENDORS: ReadonlyArray<readonly [RegExp, PlayerVendor, Confidence]> = [
   [/Unifi-Connect/i, 'unifi-connect', 'high'],
   [/WebAppManager|NetCast/, 'lg-webos', 'high'],
   [/SMART-TV.*Tizen|Tizen.*\bTV\b/i, 'samsung-tizen', 'medium'],
-  // AZR-DS: inferred from an exact traffic-count correlation with the
-  // us.zoom.zoompresence package. Unverified — hence low confidence.
-  [/AZR-DS/, 'zoom', 'low'],
+  // No `AZR-DS` rule: it was mapped to zoom from a coincidental traffic-count match with the
+  // us.zoom.zoompresence package, but that package is Android-only while AZR-DS is a Windows
+  // UA, so they can't be the same devices, and Zoom's real UA token is ZOOMROOMS. AZR-DS is
+  // an unidentified Windows signage kiosk ("-DS"); left unclassified rather than mislabelled.
 ]
 
 // UA platform tokens -> platform (first match wins). Order matters: Fire TV and
