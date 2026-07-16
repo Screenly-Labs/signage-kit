@@ -303,6 +303,19 @@ describe('detectPlayer — non-players', () => {
     expect(detectPlayer(UA.curl, '').category).toBe('bot')
     expect(detectPlayer(UA.gptbot, '').category).toBe('bot')
   })
+
+  it('does not label the AZR-DS UA as zoom (unidentified Windows kiosk)', () => {
+    const p = detectPlayer(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.157 Safari/537.36 AZR-DS',
+      '',
+    )
+    expect(p.vendor).toBeNull()
+    expect(p.platform).toBe('windows')
+  })
+
+  it('still maps the verified Zoom Presence package (header path)', () => {
+    expect(vendorFromPackage('us.zoom.zoompresence')).toBe('zoom')
+  })
 })
 
 describe('detectPlayer — global fallbacks', () => {
