@@ -260,6 +260,15 @@ describe('detectPlayer — three-way corroboration & headers', () => {
     expect(vendorFromPackage('com.unknown.app')).toBeNull()
     expect(Object.keys(PACKAGE_VENDORS).length).toBeGreaterThan(0)
   })
+
+  it('profiles the verified Zoom Presence package through the full header path', () => {
+    expect(vendorFromPackage('us.zoom.zoompresence')).toBe('zoom')
+    const p = detectPlayer('', '', 'us.zoom.zoompresence')
+    expect(p.vendor).toBe('zoom')
+    expect(p.category).toBe('meeting-room')
+    expect(p.platform).toBe('android-webview')
+    expect(p.sources).toContain('requestedWith')
+  })
 })
 
 describe('detectPlayerFromRequest — server-side (Workers/SSR)', () => {
@@ -311,15 +320,7 @@ describe('detectPlayer — non-players', () => {
     )
     expect(p.vendor).toBeNull()
     expect(p.platform).toBe('windows')
-  })
-
-  it('still profiles the verified Zoom Presence package through the full header path', () => {
-    expect(vendorFromPackage('us.zoom.zoompresence')).toBe('zoom')
-    const p = detectPlayer('', '', 'us.zoom.zoompresence')
-    expect(p.vendor).toBe('zoom')
-    expect(p.category).toBe('meeting-room')
-    expect(p.platform).toBe('android-webview')
-    expect(p.sources).toContain('requestedWith')
+    expect(p.category).toBe('browser')
   })
 })
 
