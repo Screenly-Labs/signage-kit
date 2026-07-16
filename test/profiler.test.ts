@@ -313,8 +313,13 @@ describe('detectPlayer — non-players', () => {
     expect(p.platform).toBe('windows')
   })
 
-  it('still maps the verified Zoom Presence package (header path)', () => {
+  it('still profiles the verified Zoom Presence package through the full header path', () => {
     expect(vendorFromPackage('us.zoom.zoompresence')).toBe('zoom')
+    const p = detectPlayer('', '', 'us.zoom.zoompresence')
+    expect(p.vendor).toBe('zoom')
+    expect(p.category).toBe('meeting-room')
+    expect(p.platform).toBe('android-webview')
+    expect(p.sources).toContain('requestedWith')
   })
 })
 
