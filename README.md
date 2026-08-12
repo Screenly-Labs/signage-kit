@@ -29,6 +29,8 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/polyfills` | the `replaceChildren` shim (import for side effect, first line of your entry) |
 | `@screenly-labs/signage-kit/branding` | `isScreenlyPlayer()`, `removeScreenlyBranding()` — hide the promo badge on Screenly players |
 | `@screenly-labs/signage-kit/profiler` | `detectPlayer()`, `detectPlayerFromRequest()`, `vendorFromPackage()` — identify which player/device a request comes from |
+| `@screenly-labs/signage-kit/analytics` | `trackPlayer()` — report the player profile to GA4 as user properties + a `player_detected` event |
+| `@screenly-labs/signage-kit/analytics-server` | `playerProfileResponse()` — Worker route serving the live request's profile `no-store`, for the header-enriched vendors |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
 | `@screenly-labs/signage-kit/styles/fonts.css` | `@font-face` for the canonical webfont set (Fraunces, Hanken Grotesk, Bricolage, Newsreader, Space Mono, JetBrains Mono) |
@@ -208,6 +210,62 @@ UA token — the large bare-`QtWebEngine` bucket is the same engine but is repor
 leaf module that both this profiler and `./branding` import, so `isScreenlyPlayer()` and
 `detectPlayer()` share one definition (and can't drift) without `./branding` pulling the
 full profiler into its bundle.
+
+## Player telemetry (GA4)
+
+`./analytics` turns a `PlayerProfile` into the shape GA4 can report on, so every app
+answers one question the same way: **which players are showing this app?**
+
+GA4's own device dimensions cannot answer it. In a 90-day sample of one app, 380,999 of
+401,790 devices reported as `Safari / Linux / smart tv` with `deviceModel` "(not set)",
+because a QtWebEngine player looks like Safari to GA's UA parser. Nothing standard
+separates a BrightSign from an Anthias.
+
+```ts
+import { detectPlayer } from '@screenly-labs/signage-kit/profiler'
+import { trackPlayer } from '@screenly-labs/signage-kit/analytics'
+
+trackPlayer(detectPlayer(), { app: 'timer' })
+```
+
+**Reported by the client, profiled wherever the signal is richest.** Reporting is always
+client-side so GA4 attributes the hit to the screen's own `client_id`, and because the SSR
+apps cache their HTML on a key with no user-agent component — a profile baked into that
+HTML would describe whichever screen missed the cache.
+
+The profile itself is better server-side. Only a request carries `X-Requested-With`, and
+for yodeck / pisignage / xogo / iadea / ablesign / harison / zoom / google-meet that header
+is the **only** thing that names the vendor; their user agents say nothing but
+"Android Webview" (12,289 devices in that sample). So Worker apps mount
+`./analytics-server`, which serves the live request's profile `no-store`, and the page
+reports that instead:
+
+```ts
+// Worker: mount the route (exclude it from the page cache)
+import { PLAYER_PROFILE_PATH, playerProfileResponse } from '@screenly-labs/signage-kit/analytics-server'
+app.get(PLAYER_PROFILE_PATH, (c) => playerProfileResponse(c.req.raw))
+```
+
+`player_sources` records which signals were available, so a report can tell an enriched
+row from a user-agent-only one rather than silently mixing them.
+
+**Scope: user, not event.** On an unattended screen one GA4 user is one device, and a
+device's vendor/model/engine never changes, so these go out as **user properties** and
+attach to every event the screen ever sends. That is what makes "everything from
+BrightSign players" a filter on any report instead of one that only works on the event
+carrying the params, and it makes `totalUsers` per vendor a device census directly. A
+`player_detected` event carries the same values so there is a countable occurrence and a
+numeric `player_engine_version` GA4 can average.
+
+The nine fields, which are also the custom-dimension parameter names to register in each
+property: `player_app`, `player_vendor`, `player_platform`, `player_model`,
+`player_category`, `player_engine`, `player_engine_version`, `player_below_floor`,
+`player_confidence`, `player_sources`.
+
+Watch the caps, which differ by scope: a user property value is **36 chars** (an event
+param is 100) and a user property name is **24** (a param is 40). `player_model` is the
+only free-form value, so it is the one that gets clamped, and the highest-cardinality
+field to watch in reports.
 
 ## Supported resolutions
 
