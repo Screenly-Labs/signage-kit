@@ -69,6 +69,19 @@ const flag = (value: boolean | null): string => (value == null ? UNKNOWN : Strin
 const sources = (profile: PlayerProfile): string =>
   profile.sources?.length ? [...profile.sources].sort().join('+') : UNKNOWN
 
+/** Clamp every value in an app-supplied map, leaving numbers numeric. */
+const clampAll = (
+  values: Record<string, string | number> | undefined,
+  max: number
+): Record<string, string | number> => {
+  if (!values) return {}
+  const out: Record<string, string | number> = {}
+  for (const [key, value] of Object.entries(values)) {
+    out[key] = typeof value === 'number' ? value : clamp(value, max)
+  }
+  return out
+}
+
 /** The telemetry fields, flat. Keys double as the GA4 custom-dimension parameter names. */
 export interface PlayerTelemetry {
   player_app: string
@@ -142,7 +155,9 @@ export const playerEventParams = (
   player_below_floor: flag(profile.belowFloor),
   player_confidence: clamp(profile.confidence, MAX_EVENT_VALUE),
   player_sources: sources(profile),
-  ...extra
+  // Clamped like everything else: an app-supplied value over 100 chars would be
+  // truncated or dropped by GA4 anyway, so do it here where it is visible.
+  ...clampAll(extra, MAX_EVENT_VALUE)
 })
 
 type Gtag = (...args: unknown[]) => void
@@ -150,7 +165,23 @@ type Gtag = (...args: unknown[]) => void
 export interface TrackPlayerOptions {
   /** Which app is reporting, e.g. `weather`, `clock`, `menu-board`. */
   app: string
-  /** Extra event params for an app-specific judgement. Not sent as user properties. */
+  /**
+   * How this screen is configured, e.g. `{ direction: 'countdown' }` for the timer or
+   * `{ feed: 'cnn' }` for the reader. Sent at BOTH scopes, like the player fields and for
+   * the same reason: these apps are configured by URL and one screen keeps its
+   * configuration, so at user scope it becomes a filter on every event that screen sends
+   * and `totalUsers` by config answers "how many screens count down" directly.
+   *
+   * Register each key as a custom dimension in that app's property, or GA4 collects it
+   * and no report can see it. Keys are the app's own vocabulary rather than a prefixed
+   * namespace, because each app reports into its own property.
+   */
+  config?: Record<string, string | number>
+  /**
+   * Event-only params, for a per-occurrence judgement rather than a property of the
+   * screen. Deliberately NOT sent as a user property: a user property is last-write-wins,
+   * so a value that varies between events would silently overwrite itself.
+   */
   extra?: Record<string, string | number>
   /** Injectable for tests. */
   win?: Window & { gtag?: Gtag }
@@ -166,10 +197,15 @@ export interface TrackPlayerOptions {
  * there for callers and tests that want to tell the two cases apart.
  */
 export const trackPlayer = (profile: PlayerProfile, options: TrackPlayerOptions): boolean => {
-  const { app, extra, win = typeof window !== 'undefined' ? window : undefined } = options
+  const { app, config, extra, win = typeof window !== 'undefined' ? window : undefined } = options
   const gtag = (win as { gtag?: Gtag } | undefined)?.gtag
   if (typeof gtag !== 'function') return false
-  gtag('set', 'user_properties', playerUserProperties(profile, app))
-  gtag('event', PLAYER_EVENT, playerEventParams(profile, app, extra))
+  // Config is clamped to the tighter user-property cap here, and to the looser event cap
+  // inside playerEventParams, so a long value is not truncated more than it has to be.
+  gtag('set', 'user_properties', {
+    ...playerUserProperties(profile, app),
+    ...clampAll(config, MAX_USER_VALUE)
+  })
+  gtag('event', PLAYER_EVENT, playerEventParams(profile, app, { ...config, ...extra }))
   return true
 }

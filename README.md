@@ -342,6 +342,13 @@ CalVer, `YYYY.M.MICRO` (e.g. `2026.7.0`) — month with no zero-padding so it st
 a valid semver string, and `MICRO` counts releases within the month (resets each
 month). Apps pin to a tag: `github:Screenly-Labs/signage-kit#2026.7.0`.
 
+**Bump `package.json` `version` in the release commit, before tagging.**
+`.github/workflows/release.yml` refuses to publish when the tag and the
+`package.json` version disagree, so a tag pushed without the bump leaves a red
+Release run and nothing in GitHub Packages, while apps pinning that git tag still
+resolve it and look fine. That mismatch is invisible from the app side, which is
+exactly what makes it worth stating here.
+
 ## Develop
 
 ```sh
