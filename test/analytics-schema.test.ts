@@ -49,6 +49,24 @@ describe('schema respects the GA4 limits', () => {
     expect(new Set(mets).size).toBe(mets.length)
   })
 
+  // Both of these were learned the hard way: the GA4 Admin API rejected the first
+  // attempt at registering this schema, once for an over-long description and once for
+  // a metric display name containing parentheses.
+  it('keeps every description inside the 150-char GA4 cap', () => {
+    for (const d of PLAYER_DIMENSIONS) expect(d.description.length).toBeLessThanOrEqual(150)
+    for (const m of PLAYER_METRICS) expect(m.description.length).toBeLessThanOrEqual(150)
+  })
+
+  it('keeps metric display names to the charset GA4 accepts', () => {
+    // "Value for field display_name must only contain alphanumeric, underscore, or space"
+    for (const m of PLAYER_METRICS) expect(m.displayName).toMatch(/^[A-Za-z0-9_ ]+$/)
+  })
+
+  it('keeps display names inside the 82-char GA4 cap', () => {
+    for (const d of PLAYER_DIMENSIONS) expect(d.displayName.length).toBeLessThanOrEqual(82)
+    for (const m of PLAYER_METRICS) expect(m.displayName.length).toBeLessThanOrEqual(82)
+  })
+
   it('documents every field, so the GA4 picker is self-explanatory', () => {
     for (const d of PLAYER_DIMENSIONS) {
       expect(d.displayName.length).toBeGreaterThan(0)
