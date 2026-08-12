@@ -31,6 +31,7 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/profiler` | `detectPlayer()`, `detectPlayerFromRequest()`, `vendorFromPackage()` — identify which player/device a request comes from |
 | `@screenly-labs/signage-kit/analytics` | `trackPlayer()` — report the player profile to GA4 as user properties + a `player_detected` event |
 | `@screenly-labs/signage-kit/analytics-server` | `playerProfileResponse()` — Worker route serving the live request's profile `no-store`, for the header-enriched vendors |
+| `@screenly-labs/signage-kit/analytics-schema` | `PLAYER_DIMENSIONS`, `PLAYER_METRICS` — the GA4 custom dimensions/metrics to register, as data |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
 | `@screenly-labs/signage-kit/styles/fonts.css` | `@font-face` for the canonical webfont set (Fraunces, Hanken Grotesk, Bricolage, Newsreader, Space Mono, JetBrains Mono) |
@@ -257,10 +258,48 @@ carrying the params, and it makes `totalUsers` per vendor a device census direct
 `player_detected` event carries the same values so there is a countable occurrence and a
 numeric `player_engine_version` GA4 can average.
 
-The nine fields, which are also the custom-dimension parameter names to register in each
-property: `player_app`, `player_vendor`, `player_platform`, `player_model`,
-`player_category`, `player_engine`, `player_engine_version`, `player_below_floor`,
-`player_confidence`, `player_sources`.
+### The GA4 schema
+
+Sending a param is only half the job: until a matching **custom dimension** exists in the
+property, GA4 stores the value but no report can see it. The schema is therefore checked
+in as data, in `./analytics-schema`, rather than living only in 16 admin screens:
+
+| parameter | scope | what it answers |
+|---|---|---|
+| `player_vendor` | USER | which vendor (`brightsign`, `anthias`, `yodeck`, ... or `unknown`) |
+| `player_platform` | USER | `raspberry-pi`, `tizen`, `webos`, `firetv`, `linux`, ... |
+| `player_model` | USER | model from the UA. Free-form, so the cardinality risk |
+| `player_category` | USER | `signage` / `meeting-room` / `browser` / `bot` — exclude non-players |
+| `player_engine` | USER | `qtwebengine`, `chromium`, `webkit`, ... |
+| `player_engine_version` | USER | version as a string, for segmenting |
+| `player_below_floor` | USER | `true` / `false` / `unknown` against the support floor |
+| `player_confidence` | USER | `high` / `medium` / `low` — filter to high to trust a split |
+| `player_sources` | USER | which signals were available; `requestedWith` marks a Worker-enriched row |
+| `player_app` | USER | which app reported, so a blended report stays readable |
+| `player_engine_version` | EVENT **metric** | same param as a number, so GA4 can average it |
+
+`player_engine_version` appears twice on purpose. Dimensions and metrics are separate
+namespaces, so the USER dimension segments devices ("everything on Chromium 69") while
+the event-scoped metric lets GA4 average the version across a population.
+
+A test asserts these parameter names are **exactly** the keys `playerUserProperties`
+emits. Add a telemetry field without adding it here and the build fails, rather than GA4
+quietly collecting into a dimension nobody registered.
+
+Register them once per property (they are per-property, and not retroactive, so do it
+before the app ships):
+
+```bash
+# POST /v1beta/properties/<id>/customDimensions   scope USER
+# POST /v1beta/properties/<id>/customMetrics      scope EVENT, measurementUnit STANDARD
+```
+
+Two GA4 settings worth checking at the same time, because neither is retroactive:
+
+* **Event data retention** defaults to 2 months. A player census wants the maximum, which
+  is 14 months on a standard property (26/38/50 need 360).
+* **BigQuery export** is the only way to recover params collected *before* their dimension
+  existed. Without it, anything sent before registration is unreportable.
 
 Watch the caps, which differ by scope: a user property value is **36 chars** (an event
 param is 100) and a user property name is **24** (a param is 40). `player_model` is the
