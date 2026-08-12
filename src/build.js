@@ -19,6 +19,11 @@ export { GATE }
 // the preset's @import; raw-CSS apps (Workers, world-clock) inject it through
 // processCss({ includeDegraded: true }) since they have no @import resolution.
 const DEGRADED_CSS = readFileSync(new URL('../styles/degraded.css', import.meta.url), 'utf8')
+// The shared signage hygiene (no scrollbar, no text selection on touch panels,
+// font smoothing, .text-legible). Tailwind apps pull the same sheet in through the
+// preset's @import; raw-CSS apps get it prepended here, so both paths share one
+// definition instead of drifting.
+const SIGNAGE_RESET_CSS = readFileSync(new URL('../styles/signage-reset.css', import.meta.url), 'utf8')
 
 // The single support floor for the whole fleet. Chrome 87 / Safari 14.1 is the
 // honest minimum where the apps' modern CSS renders natively: clamp()/min()/max()
@@ -47,13 +52,14 @@ export function injectGate(html) {
 //   flattenLayers  – Tailwind output: rewrite @layer into :not(#\#) specificity
 //                    (Lightning CSS won't unwrap it, and engines below the @layer
 //                    floor drop layered rules wholesale).
-//   includeDegraded – raw-CSS apps: prepend the shared html.legacy kill-switch,
-//                    which Tailwind apps instead get via the preset's @import.
+//   includeDegraded – raw-CSS apps: prepend the shared unlayered base, i.e. the
+//                    html.legacy kill-switch AND the signage reset, both of which
+//                    Tailwind apps instead get via the preset's @import.
 export async function processCss(
   cssText,
   { flattenLayers = false, includeDegraded = false, filename = 'main.css' } = {}
 ) {
-  let css = includeDegraded ? `${DEGRADED_CSS}\n${cssText}` : cssText
+  let css = includeDegraded ? `${DEGRADED_CSS}\n${SIGNAGE_RESET_CSS}\n${cssText}` : cssText
   if (flattenLayers) {
     // postcss + the cascade-layers plugin are only needed to flatten Tailwind's
     // @layer output, so they're optional peers loaded on demand — raw-CSS apps

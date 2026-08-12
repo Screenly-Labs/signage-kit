@@ -1,0 +1,49 @@
+/* =========================================================================
+   Signage reset — the hygiene every app needs regardless of how it styles
+   itself. Lifted from Screenly/edge-apps-library's base/reset.css, which had
+   several of these before we did.
+
+   Deliberately UNLAYERED plain CSS, for the same reason degraded.css is: the
+   raw-CSS apps (the Workers plus world-clock) have this prepended by
+   build.js and never run Tailwind's layer flattening, and engines below the
+   @layer floor drop layered rules wholesale. Tailwind apps get the identical
+   sheet via preset.css's @import, so there is one definition rather than two
+   that can drift.
+   ========================================================================= */
+
+/* No scrollbar on an unattended screen. Most apps already set this on their own
+   root container; doing it on the document stops a stray overflow painting a
+   scrollbar over the design, with nobody present to scroll it away. It does NOT
+   excuse an app from fitting: content past the edge is invisible either way,
+   which is why menu-board still measures and shrinks to fit. */
+html,
+body {
+  overflow: hidden;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The supported matrix includes the 800x480 and 480x800 Raspberry Pi Touch
+   Display, so those screens take taps. A long press there selects text and
+   leaves a highlight sitting on the display until something repaints it, with
+   nobody present to clear it. Opt back in with .selectable where a viewer is
+   genuinely meant to copy something. */
+body * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Legibility over a photo or video ground, which several apps hand-rolled at
+   slightly different values. One definition so the store reads consistently at
+   three metres. */
+.text-legible {
+  text-shadow: 0 0.01em 0.05em rgb(0 0 0 / 0.45);
+}
