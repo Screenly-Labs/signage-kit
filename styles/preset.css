@@ -23,6 +23,19 @@
   --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, sans-serif;
   --font-display: 'Fraunces', ui-serif, Georgia, 'Times New Roman', serif;
   --font-mono: 'Space Mono', ui-monospace, 'SFMono-Regular', monospace;
+  /* Stacking order for the layers every photo-backed app ends up with. Apps were
+     hardcoding 0-4 independently, so a shared scale keeps a scrim from landing on
+     top of the content it is meant to sit under.
+
+     The `--z-index-*` prefix is deliberate: it is Tailwind v4's own namespace, so
+     these both emit as custom properties AND generate `z-backdrop` / `z-content`
+     utilities. A tidier-looking `--z-backdrop` sits in no namespace Tailwind
+     recognises and is silently dropped from the output, which is exactly the trap
+     this landed in first time round. */
+  --z-index-backdrop: 1;
+  --z-index-content: 2;
+  --z-index-chrome: 10;
+  --z-index-overlay: 100;
 }
 
 @layer base {
@@ -50,10 +63,45 @@
     margin: 0;
   }
 
+  /* No scrollbar on an unattended screen. Every app already sets this on its own
+     root container; hoisting it to the document stops a stray overflow from
+     painting a scrollbar over the design, which no one is there to scroll away.
+     It does NOT excuse an app from fitting: content past the edge is invisible
+     either way, which is why menu-board still measures and shrinks to fit. */
+  html,
+  body {
+    overflow: hidden;
+  }
+
   body {
     min-height: 100vh; /* fallback for engines below the svh floor */
     min-height: 100svh;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+  }
+
+  /* The supported matrix includes the 800x480 and 480x800 Raspberry Pi Touch
+     Display, so these screens take taps. A long press there selects text and
+     leaves a highlight burned into the display until something repaints it, with
+     nobody present to clear it. Opt back in with .selectable where a viewer is
+     genuinely meant to copy something. */
+  body * {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .selectable {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+@layer utilities {
+  /* Legibility over a photo or video ground, which several apps hand-rolled at
+     slightly different values. One shared definition so the whole store reads
+     consistently at three metres. */
+  .text-legible {
+    text-shadow: 0 0.01em 0.05em rgb(0 0 0 / 0.45);
   }
 }
