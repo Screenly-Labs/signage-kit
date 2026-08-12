@@ -70,7 +70,7 @@ export const PLAYER_DIMENSIONS: readonly DimensionSpec[] = Object.freeze([
     parameterName: 'player_engine_version',
     displayName: 'Player engine version',
     description:
-      "Engine major version relevant to the support floor, as a string for segmenting. 'unknown' when unreadable. Registered again as a custom metric for averaging.",
+      "Engine major version at the support floor, as a string for segmenting. 'unknown' when unreadable. Also registered as a metric, for averaging.",
     scope: 'USER'
   },
   {
@@ -90,15 +90,16 @@ export const PLAYER_DIMENSIONS: readonly DimensionSpec[] = Object.freeze([
   {
     parameterName: 'player_sources',
     displayName: 'Player detection sources',
+    // GA4 caps a description at 150 chars; the full rationale lives in ./analytics.
     description:
-      'Which signals were available, sorted and + joined. Contains requestedWith only when a Worker enriched the profile from the live request, which is what separates a named Android WebView vendor from an unnameable one.',
+      'Signals used, sorted and + joined. requestedWith means a Worker enriched it from the live request, which is what names Android WebView vendors.',
     scope: 'USER'
   },
   {
     parameterName: 'player_app',
     displayName: 'Player app',
     description:
-      'Which app reported. Redundant within a single property; it keeps a report blended across all of them readable, and survives any future consolidation.',
+      'Which app reported. Redundant within one property; keeps a blended report readable and survives any future consolidation.',
     scope: 'USER'
   }
 ])
@@ -122,7 +123,7 @@ export interface MetricSpec {
 export const PLAYER_METRICS: readonly MetricSpec[] = Object.freeze([
   {
     parameterName: 'player_engine_version',
-    displayName: 'Player engine version (metric)',
+    displayName: 'Player engine version metric',
     description: 'Numeric engine major version, so GA4 can average it across devices.',
     scope: 'EVENT',
     measurementUnit: 'STANDARD'
