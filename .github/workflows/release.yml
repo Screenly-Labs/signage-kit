@@ -10,6 +10,15 @@ permissions:
   contents: read
   packages: write
 
+# One publish at a time per tag. GitHub delivered the push event for 2026.8.4
+# twice, one second apart, producing two concurrent runs: the first published and
+# the second died on `409 Cannot publish over existing version`. Serialising them
+# means the duplicate waits and then finds the version already there, which the
+# guard below turns into a skip rather than a failure.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   publish:
     name: Publish to GitHub Packages
@@ -28,7 +37,25 @@ jobs:
             echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG"
             exit 1
           fi
+      # A re-run, or a duplicated push event, must not fail the release. Publishing
+      # is not idempotent (the registry rejects an existing version outright), so
+      # ask first instead of relying on the error.
+      - name: Check whether this version is already published
+        id: published
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION is already published; skipping."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Publish
+        if: steps.published.outputs.already == 'false'
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
