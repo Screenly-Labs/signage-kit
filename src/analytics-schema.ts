@@ -24,13 +24,14 @@ export interface DimensionSpec {
 /**
  * Every field is USER scope, deliberately.
  *
- * On an unattended screen one GA4 user is one device, and a device's vendor, model and
- * engine never change. At user scope the value attaches to every event that screen ever
- * sends, so "show me everything from BrightSign players" filters any report, instead of
- * only the one event that carried the params. It also makes `totalUsers` broken down by
- * `player_vendor` a device census directly.
+ * A device's vendor, model and engine never change. At user scope the value attaches to every
+ * event that screen ever sends, so "show me everything from BrightSign players" filters any
+ * report, instead of only the one event that carried the params.
  *
- * GA4 allows 25 user-scoped dimensions per property; this uses 13, and each app adds its own
+ * It does NOT make `totalUsers` by `player_vendor` a device census. That claim used to be here
+ * and it was wrong: see the warning in ./analytics. Use `player_device` for device identity.
+ *
+ * GA4 allows 25 user-scoped dimensions per property; this uses 16, and each app adds its own
  * config keys on top (at most 5 today), so there is room but it is not unlimited.
  */
 export const PLAYER_DIMENSIONS: readonly DimensionSpec[] = Object.freeze([
@@ -126,6 +127,30 @@ export const PLAYER_DIMENSIONS: readonly DimensionSpec[] = Object.freeze([
     displayName: 'Player CSS support',
     description:
       "Measured CSS features, sorted and + joined: is, layers, has, container. 'none' if none, 'unknown' if unprobed. A set: versions are not monotonic.",
+    scope: 'USER'
+  },
+  // From the Screenly asset-metadata headers, which only a Worker app can see and only when
+  // the asset has "Send metadata" on. See ./screenly-metadata for why these beat any
+  // fingerprint: GA4's client_id does not survive on these players.
+  {
+    parameterName: 'player_device',
+    displayName: 'Player device key',
+    description:
+      'Hashed stable Screenly device id. HIGH CARDINALITY: GA4 buckets the tail into (other), so use it to calibrate views-per-device, not as a census.',
+    scope: 'USER'
+  },
+  {
+    parameterName: 'player_sw_version',
+    displayName: 'Player software version',
+    description:
+      "Screenly player generation from X-Screenly-version, e.g. 'v2'. NOT a browser engine version, so it says nothing about the support floor.",
+    scope: 'USER'
+  },
+  {
+    parameterName: 'player_metadata',
+    displayName: 'Player sent metadata',
+    description:
+      "true / false / unknown ('unknown' = no request seen). send_metadata defaults off, so this is the share of the fleet countable by device at all.",
     scope: 'USER'
   }
 ])

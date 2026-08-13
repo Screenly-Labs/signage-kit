@@ -4,8 +4,8 @@
 // `./profiler` reads the support floor off the UA version, which fails completely on the
 // single largest fleet in the census: the Screenly v1 viewer sends no version token at all
 // (`...AppleWebKit/537.36 (KHTML, like Gecko) screenly-viewer Safari/537.36`), so
-// `belowFloor` came back null for 14,396 of 16,918 attributed screens on one app. 85% of the
-// fleet had no floor signal, which is to say the field did not work.
+// `belowFloor` came back null for the large majority of screens we can attribute, so the
+// field did not do its job.
 //
 // A probe cannot fix that by imitating the floor. FLOOR is `chrome >= 87, firefox >= 78,
 // safari >= 14.1` (see ./build.js) and no cross-engine API lands on exactly those versions,
