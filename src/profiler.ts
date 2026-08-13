@@ -13,6 +13,8 @@
 // request's own headers are not exposed to page JS, so the `requestedWith` argument
 // is for server-side callers (Workers/SSR) that do have the header.
 
+import type { ScreenlyMetadata } from './screenly-metadata'
+import { screenlyMetadataFromRequest } from './screenly-metadata'
 import { SCREENLY_UA } from './screenly-ua'
 
 // Re-exported so `@screenly-labs/signage-kit/profiler` keeps exposing SCREENLY_UA; the
@@ -68,7 +70,15 @@ export type PlayerCategory = 'signage' | 'meeting-room' | 'browser' | 'bot'
 
 export type Confidence = 'high' | 'medium' | 'low'
 
-/** Which of the three input signals contributed to the profile. */
+/**
+ * Which of the input signals contributed to the profile.
+ *
+ * Screenly metadata is NOT a member, even though it is a fourth signal. `player_sources` joins
+ * these with `+` into a GA4 user property capped at 36 chars, and `referrer+requestedWith+
+ * userAgent` is already 32. Any additional token risks silent truncation, which is the exact
+ * class of quiet data corruption this module exists to avoid. Metadata provenance is reported
+ * as its own `player_metadata` field instead.
+ */
 export type ProfileSource = 'userAgent' | 'referrer' | 'requestedWith'
 
 /** Rendering engine family carried by the UA. */
@@ -104,6 +114,29 @@ export interface PlayerProfile {
   confidence: Confidence
   /** The signals that contributed, e.g. `['userAgent', 'referrer']`. */
   sources: ProfileSource[]
+  /**
+   * Pseudonymous, stable per-device key, from the Screenly `X-Screenly-hostname` metadata
+   * header. `null` for every other player and whenever metadata is off.
+   *
+   * ALWAYS the hash, never the raw id: `detectPlayerFromRequest` leaves this null and
+   * `./analytics-server` fills it in, so the raw value cannot ride along into a response. This
+   * is the only field in the profile that identifies one screen rather than a class of screens,
+   * and it exists because GA4's cookie-based client_id does not survive on these players.
+   */
+  deviceId: string | null
+  /**
+   * Screenly player generation from `X-Screenly-version`, e.g. `v2`. NOT a browser engine
+   * version, so it deliberately does not feed `belowFloor`.
+   */
+  swVersion: string | null
+  /**
+   * Whether Screenly asset metadata was present on the request. `null` in the browser, where
+   * the headers are invisible and their absence proves nothing.
+   *
+   * Worth reporting in its own right: `send_metadata` defaults to false on the asset, so this
+   * measures how much of the fleet can be counted by device at all.
+   */
+  hasMetadata: boolean | null
 }
 
 // --- signature tables --------------------------------------------------------
@@ -188,7 +221,7 @@ const UA_PLATFORMS: ReadonlyArray<readonly [RegExp, PlayerPlatform]> = [
   // `Raspbian` is a LEGACY token: it appears in the old Chromium builds and nowhere in
   // current Raspberry Pi OS, whose UA is a bare `(X11; Linux aarch64)` indistinguishable
   // from any other ARM Linux. So this rule catches only old images, which is why
-  // `raspberry-pi` reported 26 screens against 379 for vendor `anthias`. Everything else
+  // `raspberry-pi` matched almost nothing in practice. Everything else
   // Pi-shaped lands on `linux-arm` below; the honest Pi census is the Anthias vendor count.
   [/Raspbian/, 'raspberry-pi'],
   [/Web0S|webOS|NetCast/i, 'webos'],
@@ -219,8 +252,8 @@ const UA_BOT =
 //     the UA cannot tell them apart. Membership here is not neutral: it would emit
 //     `browser` at `medium` confidence, whereas omission emits `signage` at `low`, which
 //     is the weaker and therefore more honest claim. The observed traffic supports the
-//     prior: 1,568 of 1,571 Chrome OS screens are one frozen Chromium 92 image, i.e. an
-//     appliance fleet, not auto-updating laptops.
+//     prior: the Chrome OS traffic here is dominated by a single frozen Chromium image
+//     rather than a spread of auto-updating versions, i.e. appliances, not laptops.
 //   * `linux-arm` — ARM Linux with a browser on it is an embedded player far more often
 //     than it is someone's workstation. x86 Linux stays a browser.
 const BROWSER_PLATFORMS: ReadonlySet<PlayerPlatform> = new Set<PlayerPlatform>([
@@ -337,8 +370,8 @@ const matchNumber = (ua: string, re: RegExp): number | null => {
  *
  * This is the Screenly v1 viewer, and getting it wrong was expensive: it fell through to
  * `webkit`, which then looked for a `Version/` that does not exist, so `engine=webkit` and
- * `player_below_floor=unknown` covered 14,396 of 16,918 attributed screens on one app, i.e.
- * 85% of the census had no support-floor signal at all.
+ * `player_below_floor=unknown` covered the large majority of attributable screens, so almost
+ * none of the census had a support-floor signal at all.
  *
  *   Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) screenly-viewer Safari/537.36
  *
@@ -413,6 +446,8 @@ export const detectPlayer = (
     ? document.referrer
     : '',
   requestedWith?: string,
+  // Server-side only: page JS cannot read request headers. See ./screenly-metadata.
+  screenly?: ScreenlyMetadata,
 ): PlayerProfile => {
   const ua = classifyUserAgent(userAgent)
   const ref = classifyReferrer(referrer)
@@ -425,6 +460,11 @@ export const detectPlayer = (
   // Resolve the vendor from every signal that produced one, picking the highest
   // confidence. Two independent signals agreeing on a vendor upgrades it to high.
   const candidates: Array<{ vendor: PlayerVendor; confidence: Confidence }> = []
+  // First, because it is the most authoritative signal there is: the Screenly player injects
+  // these headers itself, so their presence is not an inference about the UA string but the
+  // device stating what it is. A UA token can be spoofed or stripped by an integrator; this
+  // cannot be sent by anything other than a Screenly player.
+  if (screenly?.present) candidates.push({ vendor: 'screenly', confidence: 'high' })
   if (pkgVendor) candidates.push({ vendor: pkgVendor, confidence: 'high' })
   if (ua.vendor) candidates.push({ vendor: ua.vendor, confidence: ua.vendorConfidence })
   if (ref.vendor) candidates.push({ vendor: ref.vendor, confidence: ref.vendorConfidence })
@@ -466,7 +506,11 @@ export const detectPlayer = (
   }
 
   const { engine, belowFloor } = classifyEngine(userAgent)
-  const model = modelFromUserAgent(userAgent)
+  // The Screenly UA carries no model token at all, so every Screenly screen reported
+  // `model=unknown`. `X-Screenly-hardware` (e.g. `x86`) is the only model information that
+  // exists for them. The UA keeps precedence where it has something, since it is more specific
+  // when present (a BrightSign `XT1144` beats a coarse architecture string).
+  const model = modelFromUserAgent(userAgent) ?? screenly?.hardware ?? null
 
   const sources: ProfileSource[] = []
   if (pkgVendor || isAndroidWebView) sources.push('requestedWith')
@@ -474,7 +518,22 @@ export const detectPlayer = (
     sources.push('userAgent')
   if (ref.vendor || ref.platform) sources.push('referrer')
 
-  return { vendor, platform, model, category, engine, belowFloor, confidence, sources }
+  return {
+    vendor,
+    platform,
+    model,
+    category,
+    engine,
+    belowFloor,
+    confidence,
+    sources,
+    // Filled in by ./analytics-server, which hashes it. Never the raw id: see PlayerProfile.
+    deviceId: null,
+    swVersion: screenly?.playerVersion ?? null,
+    // `null`, not `false`, when there was no request to inspect. In the browser the headers are
+    // invisible, so their absence is not evidence that metadata is off.
+    hasMetadata: screenly ? screenly.present : null,
+  }
 }
 
 /**
@@ -502,5 +561,6 @@ export const detectPlayerFromRequest = (request: { headers: Headers }): PlayerPr
     headers.get('user-agent') ?? '',
     headers.get('referer') ?? '',
     headers.get('x-requested-with') ?? undefined,
+    screenlyMetadataFromRequest(request),
   )
 }

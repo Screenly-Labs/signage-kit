@@ -3,7 +3,7 @@
 // which players are showing this app, and what are they?
 //
 // Why this exists: GA4's own device detection is useless for signage. Across a
-// 90-day sample of one app, 380,999 of 401,790 devices reported as
+// large sample of one app, the overwhelming majority of devices reported as
 // `Safari / Linux / smart tv` with `deviceModel` "(not set)" — a single
 // undifferentiated blob, because a QtWebEngine player looks like Safari to GA's
 // UA parser. Nothing in the standard dimensions separates a BrightSign from an
@@ -21,8 +21,8 @@
 // `X-Requested-With`, the Android WebView package name, and for a whole class of
 // players that header is the ONLY way to name the vendor: yodeck, pisignage, xogo,
 // iadea, ablesign, harison, zoom and google-meet all ship as Android WebViews whose
-// user agent says nothing but "Android Webview". In the 90-day sample that bucket was
-// 12,289 devices, all currently unattributable.
+// user agent says nothing but "Android Webview", leaving a sizeable bucket that nothing
+// else can attribute.
 //
 // So the Worker apps profile the live request (see ./analytics-server, which serves it
 // uncached) and hand that profile to `trackPlayer`; the static apps pass the
@@ -115,17 +115,30 @@ export interface PlayerTelemetry {
   player_degraded: string
   player_degraded_reason: string
   player_css_support: string
+  player_device: string
+  player_sw_version: string
+  player_metadata: string
 }
 
 /**
  * The device attributes as GA4 **user properties**.
  *
- * User scope, not event scope, is the whole point. On an unattended screen one GA4
- * user is one device, and a device's vendor/model/engine never changes, so at user
- * scope these attach to *every* event the screen ever sends. That is what makes
- * "show me everything from BrightSign players" a filter on any report, rather than a
- * filter that only works on the one event that happened to carry the params. It also
- * makes `totalUsers` per vendor a device census directly.
+ * User scope, not event scope, is the whole point. A device's vendor/model/engine never
+ * changes, so at user scope these attach to *every* event the screen ever sends. That is what
+ * makes "show me everything from BrightSign players" a filter on any report, rather than a
+ * filter that only works on the one event that happened to carry the params.
+ *
+ * WHAT USER SCOPE DOES NOT GIVE YOU: a device census. This comment used to claim `totalUsers`
+ * per vendor was one, and that was wrong. GA4's `client_id` lives in the `_ga` cookie and these
+ * players largely boot with fresh storage, so ids churn constantly: almost none survive a day
+ * and nearly every user looks brand new. A multi-day window therefore inflates by roughly its
+ * length.
+ *
+ * Worse for comparisons, the churn rate differs sharply between players. One can mint a fresh
+ * id on nearly every page load while another keeps one across many, so a player's apparent
+ * share of `totalUsers` mostly reflects how it handles storage. Never compare
+ * `totalUsers` across vendors. Report absolute figures as app runs, and use `player_device`
+ * (see ./screenly-metadata) wherever real device identity is available.
  *
  * `player_sources` is the provenance of the row: `userAgent+referrer` is a browser-only
  * profile, and the presence of `requestedWith` marks one enriched by a Worker off the
@@ -164,7 +177,20 @@ export const playerUserProperties = (
   // token for `player_below_floor` to read.
   player_degraded: flag(capability.degraded),
   player_degraded_reason: clamp(capability.reason, MAX_USER_VALUE),
-  player_css_support: cssSupport(capability)
+  player_css_support: cssSupport(capability),
+  // The only field here that identifies ONE screen rather than a class of screens, and the only
+  // answer to GA4's client_id not surviving on these players. Already hashed and 32 chars by the
+  // time it arrives (see ./screenly-metadata); the clamp is belt and braces.
+  //
+  // High cardinality, deliberately: GA4 will bucket the long tail into `(other)` once the
+  // distinct count grows, so treat this as a calibration SAMPLE rather than a full census.
+  // Its real use is measuring page views per device, which converts the app-run counts we can
+  // measure into the device counts we cannot.
+  player_device: clamp(profile.deviceId, MAX_USER_VALUE),
+  player_sw_version: clamp(profile.swVersion, MAX_USER_VALUE),
+  // Worth a dimension of its own because `send_metadata` defaults to false on the asset: this
+  // is the share of the fleet that can be counted by device at all.
+  player_metadata: flag(profile.hasMetadata)
 })
 
 /**
@@ -195,6 +221,9 @@ export const playerEventParams = (
   player_degraded: flag(capability.degraded),
   player_degraded_reason: clamp(capability.reason, MAX_EVENT_VALUE),
   player_css_support: cssSupport(capability),
+  player_device: clamp(profile.deviceId, MAX_EVENT_VALUE),
+  player_sw_version: clamp(profile.swVersion, MAX_EVENT_VALUE),
+  player_metadata: flag(profile.hasMetadata),
   // Clamped like everything else: an app-supplied value over 100 chars would be
   // truncated or dropped by GA4 anyway, so do it here where it is visible.
   ...clampAll(extra, MAX_EVENT_VALUE)

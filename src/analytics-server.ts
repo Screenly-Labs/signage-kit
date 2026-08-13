@@ -19,6 +19,7 @@
 
 import { detectPlayerFromRequest } from './profiler'
 import type { PlayerProfile } from './profiler'
+import { hashDeviceId, screenlyDeviceId } from './screenly-metadata'
 
 /**
  * The route every Worker app mounts, so the client half can fetch a profile without
@@ -41,13 +42,48 @@ export const PLAYER_PROFILE_HEADERS: Readonly<Record<string, string>> = Object.f
 })
 
 /**
+ * Where the Screenly device id becomes a pseudonym.
+ *
+ * `detectPlayerFromRequest` returns `deviceId: null` by design, so the raw
+ * `X-Screenly-hostname` value exists only inside this function and is replaced by its hash
+ * before anything is serialised. GA4 therefore never receives a raw Screenly device id, which
+ * would be a directly joinable key into device inventory.
+ *
+ * Async purely because `crypto.subtle.digest` is. Both entry points below are async as a
+ * result, which is source-compatible with the apps: they mount the route as
+ * `(c) => playerProfileResponse(c.req.raw)` and Hono accepts a promise.
+ */
+const withDeviceId = async (
+  request: { headers: Headers },
+  salt?: string
+): Promise<PlayerProfile> => {
+  const profile = detectPlayerFromRequest(request)
+  const raw = screenlyDeviceId(request)
+  if (!raw) return profile
+  return { ...profile, deviceId: await hashDeviceId(raw, salt) }
+}
+
+/** Options for the two entry points. */
+export interface PlayerProfileOptions {
+  /**
+   * Optional salt for the device-id hash, e.g. a Worker secret bound as an env var. Without
+   * it the hash still cannot be reversed by guessing, but a holder of Screenly's device list
+   * could confirm a given id by computing its hash. Pass one to close that gap.
+   */
+  salt?: string
+}
+
+/**
  * Profile the live request and return it as an uncacheable JSON response.
  *
  * Accepts anything with a `Headers`, matching `detectPlayerFromRequest`, so it takes a
  * `Request` or a Hono `c.req.raw` directly.
  */
-export const playerProfileResponse = (request: { headers: Headers }): Response =>
-  new Response(JSON.stringify(detectPlayerFromRequest(request)), {
+export const playerProfileResponse = async (
+  request: { headers: Headers },
+  options: PlayerProfileOptions = {}
+): Promise<Response> =>
+  new Response(JSON.stringify(await withDeviceId(request, options.salt)), {
     status: 200,
     headers: { ...PLAYER_PROFILE_HEADERS }
   })
@@ -57,5 +93,7 @@ export const playerProfileResponse = (request: { headers: Headers }): Response =
  * it is already building than mount a second route. The same no-store rule applies to
  * whatever carries it.
  */
-export const playerProfileFromRequest = (request: { headers: Headers }): PlayerProfile =>
-  detectPlayerFromRequest(request)
+export const playerProfileFromRequest = async (
+  request: { headers: Headers },
+  options: PlayerProfileOptions = {}
+): Promise<PlayerProfile> => withDeviceId(request, options.salt)

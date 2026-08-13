@@ -33,6 +33,7 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/analytics-server` | `playerProfileResponse()` — Worker route serving the live request's profile `no-store`, for the header-enriched vendors |
 | `@screenly-labs/signage-kit/analytics-schema` | `PLAYER_DIMENSIONS`, `PLAYER_METRICS` — the GA4 custom dimensions/metrics to register, as data |
 | `@screenly-labs/signage-kit/capability` | `detectCapability()` — measured degraded verdict + CSS support, for the screens whose UA has no version |
+| `@screenly-labs/signage-kit/screenly-metadata` | `screenlyMetadataFromRequest()`, `screenlyDeviceId()`, `hashDeviceId()` — the `X-Screenly-*` headers, incl. the only stable per-device id |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
 | `@screenly-labs/signage-kit/styles/fonts.css` | `@font-face` for the canonical webfont set (Fraunces, Hanken Grotesk, Bricolage, Newsreader, Space Mono, JetBrains Mono) |
@@ -238,8 +239,8 @@ Use the measured `player_degraded` and `player_css_support` for that; see
 `./analytics` turns a `PlayerProfile` into the shape GA4 can report on, so every app
 answers one question the same way: **which players are showing this app?**
 
-GA4's own device dimensions cannot answer it. In a 90-day sample of one app, 380,999 of
-401,790 devices reported as `Safari / Linux / smart tv` with `deviceModel` "(not set)",
+GA4's own device dimensions cannot answer it. In a large sample of one app, the overwhelming majority of
+devices reported as `Safari / Linux / smart tv` with `deviceModel` "(not set)",
 because a QtWebEngine player looks like Safari to GA's UA parser. Nothing standard
 separates a BrightSign from an Anthias.
 
@@ -258,7 +259,7 @@ HTML would describe whichever screen missed the cache.
 The profile itself is better server-side. Only a request carries `X-Requested-With`, and
 for yodeck / pisignage / xogo / iadea / ablesign / harison / zoom / google-meet that header
 is the **only** thing that names the vendor; their user agents say nothing but
-"Android Webview" (12,289 devices in that sample). So Worker apps mount
+"Android Webview" (a large unattributable bucket). So Worker apps mount
 `./analytics-server`, which serves the live request's profile `no-store`, and the page
 reports that instead:
 
@@ -300,14 +301,43 @@ in as data, in `./analytics-schema`, rather than living only in 16 admin screens
 | `player_degraded` | USER | `true` / `false` / `unknown` — **measured**, is this screen on the degraded path |
 | `player_degraded_reason` | USER | `none` / `old` / `slow` / `old+slow` / `probe-failed` |
 | `player_css_support` | USER | measured CSS features, sorted and `+` joined: `is`, `layers`, `has`, `container` |
+| `player_device` | USER | hashed stable Screenly device id. High cardinality, see below |
+| `player_sw_version` | USER | Screenly player generation (`v2`), NOT an engine version |
+| `player_metadata` | USER | was Screenly asset metadata present on the request |
 | `player_engine_version` | EVENT **metric** | same param as a number, so GA4 can average it |
+
+### `totalUsers` is not a device count
+
+GA4's `client_id` lives in the `_ga` cookie and these players largely boot with fresh storage.
+Measured over a week, almost no `client_id` survived a single day and nearly every user looked
+brand new. A multi-day window therefore inflates by roughly its length.
+
+Worse for comparisons, the churn rate differs sharply between players: one can mint a fresh id
+on nearly every page load while another keeps one across many. A player's
+apparent share of `totalUsers` therefore mostly reflects how it handles storage.
+
+So: never compare `totalUsers` across vendors, and report absolute figures as **app runs**.
+
+`player_device` is the fix, where it is available. It comes from `X-Screenly-hostname`, an actual
+Screenly device id (`srly-jmar75ko6xp651j`), hashed to 128 bits before it leaves the Worker so
+GA4 never holds a joinable key into device inventory. Two limits: only the 5 Worker apps can read
+request headers, and `send_metadata` defaults to **false** on the asset, so coverage is a subset.
+`player_metadata` measures that subset. Being high cardinality, GA4 buckets the tail into
+`(other)`, so treat `player_device` as a calibration sample (views per device) rather than a
+census.
+
+A **fingerprint** is not an alternative. Signage fleets are deliberately identical: whole
+populations here share one frozen browser image, and the dominant player UA carries no version
+token at all. Canvas, WebGL, audio, fonts and
+resolution are identical across identical hardware, so a fingerprint-derived id would merge
+thousands of screens into one. Today's over-count is detectable; a colliding fingerprint
+under-counts silently.
 
 ### Measured capability, and why it exists alongside `player_below_floor`
 
 `player_below_floor` is read off the UA version, and that fails completely on the largest
 fleet in the census: the Screenly v1 viewer sends no version token, so the field was
-`unknown` for 14,396 of 16,918 attributed screens on one app. 85% of the fleet had no floor
-signal.
+`unknown` for the large majority of attributable screens, so the fleet had no floor signal.
 
 A probe cannot fix that by restating the floor. `FLOOR` is `chrome >= 87, firefox >= 78,
 safari >= 14.1` and no cross-engine API lands on exactly those versions, so `./capability`

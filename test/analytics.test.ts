@@ -18,6 +18,10 @@ const profile = (over: Partial<PlayerProfile> = {}): PlayerProfile =>
     belowFloor: true,
     confidence: 'high',
     sources: ['userAgent'],
+    // Defaults match a browser-built profile: no request headers, so no Screenly metadata.
+    deviceId: null,
+    swVersion: null,
+    hasMetadata: null,
     ...over
   }) as PlayerProfile
 
@@ -50,8 +54,24 @@ describe('playerUserProperties', () => {
       // than as `false`, because "we did not look" is not "we looked and it is fine".
       player_degraded: 'unknown',
       player_degraded_reason: 'unknown',
-      player_css_support: 'unknown'
+      player_css_support: 'unknown',
+      // No request headers in a browser-built profile, so no Screenly metadata. `unknown`
+      // rather than `false` for player_metadata: we could not look, which is not the same as
+      // looking and finding it off.
+      player_device: 'unknown',
+      player_sw_version: 'unknown',
+      player_metadata: 'unknown'
     })
+  })
+
+  it('carries the Screenly device key and player generation when metadata was present', () => {
+    const props = playerUserProperties(
+      profile({ deviceId: 'a'.repeat(32), swVersion: 'v2', hasMetadata: true }),
+      'weather'
+    )
+    expect(props.player_device).toBe('a'.repeat(32))
+    expect(props.player_sw_version).toBe('v2')
+    expect(props.player_metadata).toBe('true')
   })
 
   it('sends the sentinel for every null rather than omitting the key', () => {
