@@ -48,6 +48,22 @@ export function injectGate(html) {
   return out
 }
 
+// The font URL prefix baked into styles/fonts.css. Absolute from the document
+// root, which is correct for an app served at the root and wrong for anything
+// served from a subpath — see the fontPath option on processCss.
+export const FONT_URL_PREFIX = '/static/fonts/'
+
+// Rewrite the vendored-font prefix in url() tokens. Scoped to url() rather than a
+// blanket string replace so a font *name* or a comment containing the same text is
+// left alone.
+const rewriteFontUrls = (css, fontPath) => {
+  const base = fontPath === '' || fontPath.endsWith('/') ? fontPath : `${fontPath}/`
+  return css.replace(
+    /url\((\s*['"]?)\/static\/fonts\//g,
+    (_match, quote) => `url(${quote}${base}`
+  )
+}
+
 // Down-level + minify CSS to the FLOOR.
 //   flattenLayers  – Tailwind output: rewrite @layer into :not(#\#) specificity
 //                    (Lightning CSS won't unwrap it, and engines below the @layer
@@ -55,11 +71,24 @@ export function injectGate(html) {
 //   includeDegraded – raw-CSS apps: prepend the shared unlayered base, i.e. the
 //                    html.legacy kill-switch AND the signage reset, both of which
 //                    Tailwind apps instead get via the preset's @import.
+//   fontPath        – rewrite styles/fonts.css's `/static/fonts/` prefix. The
+//                    default is correct for an app served at the document root,
+//                    but a consumer served from a subpath (a WordPress plugin under
+//                    /wp-content/plugins/<slug>/, a project page under /<repo>/)
+//                    gets a 404 for every face. Pass the prefix the built
+//                    stylesheet should use — relative values resolve against the
+//                    stylesheet, so 'fonts/' is usually what you want, and it pairs
+//                    with the destDir you gave syncFonts(). Without this an app has
+//                    to hand-maintain its own @font-face block and the kit stops
+//                    owning which files ship.
 export async function processCss(
   cssText,
-  { flattenLayers = false, includeDegraded = false, filename = 'main.css' } = {}
+  { flattenLayers = false, includeDegraded = false, filename = 'main.css', fontPath } = {}
 ) {
   let css = includeDegraded ? `${DEGRADED_CSS}\n${SIGNAGE_RESET_CSS}\n${cssText}` : cssText
+  if (typeof fontPath === 'string') {
+    css = rewriteFontUrls(css, fontPath)
+  }
   if (flattenLayers) {
     // postcss + the cascade-layers plugin are only needed to flatten Tailwind's
     // @layer output, so they're optional peers loaded on demand — raw-CSS apps
