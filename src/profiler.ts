@@ -48,6 +48,14 @@ export type PlayerPlatform =
   | 'android'
   | 'chromeos'
   | 'raspberry-pi'
+  /**
+   * ARM Linux running a desktop-style browser: a Pi, an Anthias box, an ARM SBC. NOT
+   * labelled `raspberry-pi` because nothing in a modern UA proves it is one (see
+   * UA_PLATFORMS), and over-claiming would make the Pi census fiction rather than merely
+   * incomplete. Distinct from `linux` because x86 Linux is a workstation and ARM Linux
+   * with a browser on it is, in this traffic, an embedded player.
+   */
+  | 'linux-arm'
   | 'webos'
   | 'tizen'
   | 'windows'
@@ -177,6 +185,11 @@ const UA_PLATFORMS: ReadonlyArray<readonly [RegExp, PlayerPlatform]> = [
   // anchor keeps ordinary all-caps words like `AFTER` from matching.
   [/\bAFT[A-Z0-9]{1,6}\s+Build\//, 'firetv'],
   [/\bCrOS\b/, 'chromeos'],
+  // `Raspbian` is a LEGACY token: it appears in the old Chromium builds and nowhere in
+  // current Raspberry Pi OS, whose UA is a bare `(X11; Linux aarch64)` indistinguishable
+  // from any other ARM Linux. So this rule catches only old images, which is why
+  // `raspberry-pi` reported 26 screens against 379 for vendor `anthias`. Everything else
+  // Pi-shaped lands on `linux-arm` below; the honest Pi census is the Anthias vendor count.
   [/Raspbian/, 'raspberry-pi'],
   [/Web0S|webOS|NetCast/i, 'webos'],
   [/Tizen/, 'tizen'],
@@ -186,6 +199,10 @@ const UA_PLATFORMS: ReadonlyArray<readonly [RegExp, PlayerPlatform]> = [
   [/Windows NT/, 'windows'],
   [/iPhone|iPad|iPod/, 'ios'],
   [/Macintosh|Mac OS X/, 'macos'],
+  // ARM Linux, before the generic Linux catch-all. Anchored on the `X11; Linux <arch>`
+  // platform token so it cannot fire on an Android UA (`Linux; Android 12; …`, matched
+  // above regardless) or on an arch mentioned anywhere else in the string.
+  [/X11;\s*Linux\s+(?:aarch64|arm64|armv\d+l?|armhf)\b/, 'linux-arm'],
   [/X11|Linux|Ubuntu/, 'linux'],
 ]
 
@@ -195,6 +212,17 @@ const UA_BOT =
 // Ordinary personal-computing platforms. Any other recognised platform is treated as a
 // signage-capable device when no vendor is identified — so a new signage platform added
 // to PlayerPlatform / UA_PLATFORMS defaults to signage without a second list to update.
+//
+// Two platforms are deliberately NOT listed, and both are judgement calls rather than
+// facts, so they are written down:
+//   * `chromeos` — a Chromebook is a browser and a Chromebox in kiosk mode is signage, and
+//     the UA cannot tell them apart. Membership here is not neutral: it would emit
+//     `browser` at `medium` confidence, whereas omission emits `signage` at `low`, which
+//     is the weaker and therefore more honest claim. The observed traffic supports the
+//     prior: 1,568 of 1,571 Chrome OS screens are one frozen Chromium 92 image, i.e. an
+//     appliance fleet, not auto-updating laptops.
+//   * `linux-arm` — ARM Linux with a browser on it is an embedded player far more often
+//     than it is someone's workstation. x86 Linux stays a browser.
 const BROWSER_PLATFORMS: ReadonlySet<PlayerPlatform> = new Set<PlayerPlatform>([
   'windows',
   'macos',
@@ -302,12 +330,30 @@ const matchNumber = (ua: string, re: RegExp): number | null => {
   return m?.[1] != null ? Number(m[1]) : null
 }
 
+/**
+ * Blink froze `AppleWebKit/537.36` into every Chromium UA and never moved it, while a real
+ * Safari/WebKit UA always carries a `Version/` token. So exactly `537.36` with no `Version/`
+ * is Blink whose `Chrome/` token was replaced by a product token rather than WebKit.
+ *
+ * This is the Screenly v1 viewer, and getting it wrong was expensive: it fell through to
+ * `webkit`, which then looked for a `Version/` that does not exist, so `engine=webkit` and
+ * `player_below_floor=unknown` covered 14,396 of 16,918 attributed screens on one app, i.e.
+ * 85% of the census had no support-floor signal at all.
+ *
+ *   Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) screenly-viewer Safari/537.36
+ *
+ * Deliberately narrow on the exact version: `538.x` (QtWebKit) and `605.x` (iOS WKWebView)
+ * also omit `Version/` and genuinely ARE WebKit, so they must keep falling through.
+ */
+const BLINK_FROZEN_WEBKIT = /AppleWebKit\/537\.36\b/
+
 const classifyEngine = (ua: string): { engine: EngineInfo; belowFloor: boolean | null } => {
   let name: EngineName | null = null
   if (/QtWebEngine/.test(ua)) name = 'qtwebengine'
   else if (/Electron\//.test(ua)) name = 'electron'
   else if (/Firefox\//.test(ua)) name = 'gecko'
   else if (/Chrome\/|Chromium\//.test(ua)) name = 'chromium'
+  else if (BLINK_FROZEN_WEBKIT.test(ua) && !/Version\//.test(ua)) name = 'chromium'
   else if (/AppleWebKit|Version\//.test(ua)) name = 'webkit'
 
   let version: number | null = null
@@ -333,6 +379,12 @@ const modelFromUserAgent = (ua: string): string | null => {
   // Cisco RoomOS device name (e.g. Cisco Desk Pro).
   const cisco = ua.match(/RoomOS;\s*([^)]+)\)/)
   if (cisco?.[1]) return cisco[1].trim()
+  // Chrome OS ships no device model, but the platform token carries arch + image version
+  // (`X11; CrOS x86_64 13982.82.0`). That is the field that separates a frozen appliance
+  // fleet from auto-updating Chromebooks, so keep it rather than reporting model `unknown`
+  // for every Chrome OS screen. Well inside the 36-char user-property cap.
+  const cros = ua.match(/\(X11;\s*CrOS\s+([^)]+)\)/)
+  if (cros?.[1]) return cros[1].trim()
   // Android device model: the token before ` Build/`, else before the closing paren.
   const build = ua.match(/;\s*([^;()]+?)\s+Build\//)
   if (build?.[1]) return build[1].trim()
