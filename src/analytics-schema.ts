@@ -43,7 +43,8 @@ export const PLAYER_DIMENSIONS: readonly DimensionSpec[] = Object.freeze([
   {
     parameterName: 'player_platform',
     displayName: 'Player platform',
-    description: 'Hardware/OS platform: raspberry-pi, tizen, webos, firetv, android, linux, ...',
+    description:
+      'Hardware/OS platform: linux-arm (ARM boards, incl. most Pis), raspberry-pi (legacy UA only), tizen, webos, firetv, android, linux, ...',
     scope: 'USER'
   },
   {

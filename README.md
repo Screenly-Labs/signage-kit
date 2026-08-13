@@ -212,6 +212,24 @@ leaf module that both this profiler and `./branding` import, so `isScreenlyPlaye
 `detectPlayer()` share one definition (and can't drift) without `./branding` pulling the
 full profiler into its bundle.
 
+Three platform/engine rules are worth knowing before you read a report:
+
+- **`raspberry-pi` is not the Pi census.** The only Pi token is the legacy `Raspbian`
+  string, absent from current Raspberry Pi OS, whose UA is a bare `(X11; Linux aarch64)`.
+  Modern Pis therefore report `linux-arm`, which is honest about what the UA proves. For an
+  actual Pi count, use vendor `anthias`.
+- **`AppleWebKit/537.36` with no `Version/` is Blink, not WebKit.** Chromium froze that
+  version string and never moved it, and real Safari always sends `Version/`. This is what
+  the Screenly v1 viewer UA looks like, so misreading it put `engine: 'webkit'` and a null
+  `belowFloor` on the largest fleet in the census.
+- **`chromeos` and `linux-arm` count as signage-capable**, not browsers, when no vendor is
+  identified. Both are judgement calls, and the reasoning is written out at
+  `BROWSER_PLATFORMS` in `src/profiler.ts`.
+
+`belowFloor` is still `null` whenever the UA carries no version token at all, which
+includes the Screenly v1 viewer. Fixing the engine family does not conjure a version that
+was never in the string, so do not treat `player_below_floor` as a fleet-wide signal.
+
 ## Player telemetry (GA4)
 
 `./analytics` turns a `PlayerProfile` into the shape GA4 can report on, so every app
@@ -267,7 +285,7 @@ in as data, in `./analytics-schema`, rather than living only in 16 admin screens
 | parameter | scope | what it answers |
 |---|---|---|
 | `player_vendor` | USER | which vendor (`brightsign`, `anthias`, `yodeck`, ... or `unknown`) |
-| `player_platform` | USER | `raspberry-pi`, `tizen`, `webos`, `firetv`, `linux`, ... |
+| `player_platform` | USER | `linux-arm`, `raspberry-pi`, `tizen`, `webos`, `firetv`, `linux`, ... |
 | `player_model` | USER | model from the UA. Free-form, so the cardinality risk |
 | `player_category` | USER | `signage` / `meeting-room` / `browser` / `bot` — exclude non-players |
 | `player_engine` | USER | `qtwebengine`, `chromium`, `webkit`, ... |

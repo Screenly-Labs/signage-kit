@@ -176,6 +176,83 @@ describe('detectPlayer — engine, belowFloor, model', () => {
     expect(p.engine).toEqual({ name: null, version: null })
     expect(p.belowFloor).toBeNull()
   })
+
+  // Regression: the Screenly v1 viewer was read as WebKit, so belowFloor went null for the
+  // single largest fleet in the census. `AppleWebKit/537.36` with no `Version/` is Blink.
+  it('reads the Screenly v1 viewer as Blink, not WebKit', () => {
+    expect(detectPlayer(UA.screenlyViewer, '').engine.name).toBe('chromium')
+  })
+
+  it('still reads a genuine WebKit UA as WebKit', () => {
+    // 538.x (QtWebKit) and 605.x (iOS WKWebView) also omit `Version/` and really are WebKit,
+    // so the Blink rule must not swallow them.
+    expect(detectPlayer(UA.screenlyWebview, '').engine.name).toBe('webkit')
+    expect(
+      detectPlayer(
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148',
+        '',
+      ).engine.name,
+    ).toBe('webkit')
+    // 537.36 WITH a Version/ token is a WebView announcing its own version: still WebKit.
+    expect(detectPlayer(UA.androidWv, '').engine.name).toBe('chromium') // has Chrome/, matched earlier
+  })
+
+  it('keeps the version unreadable when the UA carries no version token', () => {
+    // Honest limitation: fixing the engine family does not recover a version that was never
+    // in the string, so belowFloor stays null for Screenly v1. That needs the gate verdict.
+    const p = detectPlayer(UA.screenlyViewer, '')
+    expect(p.engine.version).toBeNull()
+    expect(p.belowFloor).toBeNull()
+  })
+
+  it('reads the Chrome OS arch + image version as the model', () => {
+    expect(detectPlayer(UA.chromeos, '').model).toBe('x86_64 14541.0.0')
+  })
+
+  it('keeps the Chrome OS model inside the 36-char user-property cap', () => {
+    const model = detectPlayer(UA.chromeos, '').model
+    expect(model).not.toBeNull()
+    expect((model as string).length).toBeLessThanOrEqual(36)
+  })
+})
+
+describe('detectPlayer — ARM Linux', () => {
+  it('separates ARM Linux from x86 Linux', () => {
+    expect(detectPlayer(UA.screenlyViewer, '').platform).toBe('linux-arm') // armv7l
+    expect(detectPlayer(UA.anthias, '').platform).toBe('linux-arm') // aarch64
+    expect(detectPlayer(UA.screenlyV2, '').platform).toBe('linux') // x86_64
+  })
+
+  it('treats vendorless ARM Linux as signage-capable and x86 Linux as a browser', () => {
+    // Same UA but for the arch, so the arch is provably the only thing driving the split.
+    const chromiumOn = (arch: string) =>
+      detectPlayer(
+        `Mozilla/5.0 (X11; Linux ${arch}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36`,
+        '',
+      )
+
+    const arm = chromiumOn('aarch64')
+    expect(arm.platform).toBe('linux-arm')
+    expect(arm.category).toBe('signage')
+
+    const x86 = chromiumOn('x86_64')
+    expect(x86.platform).toBe('linux')
+    expect(x86.category).toBe('browser')
+  })
+
+  it('does not let the ARM rule fire on an Android UA', () => {
+    // Android UAs are `Linux; Android …` with no X11 token, and are matched earlier anyway.
+    expect(detectPlayer(UA.androidChrome, '').platform).toBe('android')
+    expect(detectPlayer(UA.yodeckFiretv, '').platform).toBe('firetv')
+  })
+
+  it('still honours the legacy Raspbian token over the generic ARM rule', () => {
+    const p = detectPlayer(
+      'Mozilla/5.0 (X11; Linux armv7l) AppleWebKit/537.36 (KHTML, like Gecko) Raspbian Chromium/72.0.3626.121 Chrome/72.0.3626.121 Safari/537.36',
+      '',
+    )
+    expect(p.platform).toBe('raspberry-pi')
+  })
 })
 
 describe('detectPlayer — robustness', () => {
