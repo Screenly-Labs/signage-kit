@@ -24,7 +24,7 @@ bun add @screenly-labs/signage-kit
 
 | Export | Use |
 | --- | --- |
-| `@screenly-labs/signage-kit/build` | `FLOOR`, `GATE`, `injectGate`, `processCss`, `bundleJs` — the build-time pipeline |
+| `@screenly-labs/signage-kit/build` | `FLOOR`, `GATE`, `FONT_URL_PREFIX`, `injectGate`, `processCss`, `bundleJs` — the build-time pipeline |
 | `@screenly-labs/signage-kit/gate` | `GATE` only, with **no build deps** — safe to import from a Worker SSR template |
 | `@screenly-labs/signage-kit/polyfills` | the `replaceChildren` shim (import for side effect, first line of your entry) |
 | `@screenly-labs/signage-kit/branding` | `isScreenlyPlayer()`, `removeScreenlyBranding()` — hide the promo badge on Screenly players |
@@ -131,6 +131,24 @@ importing the whole sheet only downloads the families your rendered text actuall
 uses. `--font-sans` / `--font-display` / `--font-mono` tokens are set in `preset.css`;
 override the display/mono choice per app. To add a family, `bun add` it here and add
 a manifest entry + `@font-face` — never pin `@fontsource` versions in an app.
+
+`fonts.css` points every `src` at `/static/fonts/…`, absolute from the document
+root. That is right for an app served at the root and wrong for a consumer served
+from a **subpath** — a WordPress plugin under
+`/wp-content/plugins/<slug>/`, a GitHub project page under `/<repo>/` — where every
+face 404s. Pass `fontPath` to `processCss` to rewrite the prefix, matching the
+`destDir` you gave `syncFonts()`:
+
+```js
+await syncFonts(['fraunces'], `${DIST}/fonts`)
+// Relative URLs resolve against the stylesheet, so this works no matter where the
+// consumer is mounted, including a subdirectory install.
+await Bun.write(cssOut, await processCss(css, { flattenLayers: true, fontPath: 'fonts/' }))
+```
+
+Without it such a consumer has to hand-maintain a duplicate `@font-face` block, and
+the kit stops being the single owner of which font files ship — which is most of the
+point of `FONTS`.
 
 **Footer badge.** `@import styles/brand.css`, copy `screenly-logo.svg` into
 `/static/images/`, render the anchor, and call the remover from your entry:
