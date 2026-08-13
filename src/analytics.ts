@@ -30,6 +30,8 @@
 // which signals were actually available, so a report can tell an enriched row from a
 // user-agent-only one instead of silently mixing them.
 
+import type { Capability, ProbeWindow } from './capability'
+import { detectCapability } from './capability'
 import type { PlayerProfile } from './profiler'
 
 /**
@@ -69,6 +71,22 @@ const flag = (value: boolean | null): string => (value == null ? UNKNOWN : Strin
 const sources = (profile: PlayerProfile): string =>
   profile.sources?.length ? [...profile.sources].sort().join('+') : UNKNOWN
 
+/**
+ * The measured CSS features, sorted and `+` joined like `sources` above.
+ *
+ * Note the three-way split, which is the whole reason this is not a boolean: `null` (no DOM
+ * to probe) becomes the sentinel, while an empty result becomes `'none'`. "We could not look"
+ * and "we looked and this screen supports nothing" are different findings and must not share
+ * a row. Worst case is `container+has+is+layers`, 23 chars, inside the 36-char user cap.
+ */
+const cssSupport = (capability: Capability): string => {
+  if (capability.css == null) return UNKNOWN
+  return capability.css.length ? [...capability.css].sort().join('+') : 'none'
+}
+
+/** No DOM was available to probe, so every capability field reads as the sentinel. */
+const UNPROBED: Capability = { degraded: null, reason: null, css: null }
+
 /** Clamp every value in an app-supplied map, leaving numbers numeric. */
 const clampAll = (
   values: Record<string, string | number> | undefined,
@@ -94,6 +112,9 @@ export interface PlayerTelemetry {
   player_below_floor: string
   player_confidence: string
   player_sources: string
+  player_degraded: string
+  player_degraded_reason: string
+  player_css_support: string
 }
 
 /**
@@ -111,7 +132,11 @@ export interface PlayerTelemetry {
  * live request headers. Without it, an unattributed Android WebView from a static app
  * would be indistinguishable from one a Worker looked at and still could not name.
  */
-export const playerUserProperties = (profile: PlayerProfile, app: string): PlayerTelemetry => ({
+export const playerUserProperties = (
+  profile: PlayerProfile,
+  app: string,
+  capability: Capability = UNPROBED
+): PlayerTelemetry => ({
   // Each app reports into its own GA4 property, so this is redundant within a single
   // property. It is here so a blended report across all of them stays self-describing,
   // and so the data survives if the properties are ever consolidated.
@@ -126,9 +151,20 @@ export const playerUserProperties = (profile: PlayerProfile, app: string): Playe
   // A user property value is always a string, so the version is stringified here. The
   // numeric form is kept on the event params below, where GA4 can average it.
   player_engine_version: clamp(profile.engine?.version, MAX_USER_VALUE),
+  // UA-derived, and left exactly as it was on purpose. GA4 registration is not retroactive,
+  // so repurposing a live dimension would make every historical row silently incomparable.
+  // It stays correct where the UA carries a version (BrightSign 87, Anthias 122) and null
+  // where it does not; the measured fields below are what cover the rest of the fleet. On the
+  // screens where both exist, the two can be cross-checked against each other.
   player_below_floor: flag(profile.belowFloor),
   player_confidence: clamp(profile.confidence, MAX_USER_VALUE),
-  player_sources: sources(profile)
+  player_sources: sources(profile),
+  // Measured, not inferred: the gate's own predicate, so this is exact by construction and
+  // populated on every screen with a DOM, including the Screenly v1 fleet that has no version
+  // token for `player_below_floor` to read.
+  player_degraded: flag(capability.degraded),
+  player_degraded_reason: clamp(capability.reason, MAX_USER_VALUE),
+  player_css_support: cssSupport(capability)
 })
 
 /**
@@ -143,7 +179,8 @@ export const playerUserProperties = (profile: PlayerProfile, app: string): Playe
 export const playerEventParams = (
   profile: PlayerProfile,
   app: string,
-  extra: Record<string, string | number> = {}
+  extra: Record<string, string | number> = {},
+  capability: Capability = UNPROBED
 ): Record<string, string | number> => ({
   player_app: clamp(app, MAX_EVENT_VALUE),
   player_vendor: clamp(profile.vendor, MAX_EVENT_VALUE),
@@ -155,6 +192,9 @@ export const playerEventParams = (
   player_below_floor: flag(profile.belowFloor),
   player_confidence: clamp(profile.confidence, MAX_EVENT_VALUE),
   player_sources: sources(profile),
+  player_degraded: flag(capability.degraded),
+  player_degraded_reason: clamp(capability.reason, MAX_EVENT_VALUE),
+  player_css_support: cssSupport(capability),
   // Clamped like everything else: an app-supplied value over 100 chars would be
   // truncated or dropped by GA4 anyway, so do it here where it is visible.
   ...clampAll(extra, MAX_EVENT_VALUE)
@@ -200,12 +240,16 @@ export const trackPlayer = (profile: PlayerProfile, options: TrackPlayerOptions)
   const { app, config, extra, win = typeof window !== 'undefined' ? window : undefined } = options
   const gtag = (win as { gtag?: Gtag } | undefined)?.gtag
   if (typeof gtag !== 'function') return false
+  // Probed here rather than taken from the caller, so all 16 apps get the capability fields
+  // from a version bump alone. It also has to happen client-side: the Worker apps hand over a
+  // profile built on the server, where there is nothing to feature-detect.
+  const capability = detectCapability(win as unknown as ProbeWindow)
   // Config is clamped to the tighter user-property cap here, and to the looser event cap
   // inside playerEventParams, so a long value is not truncated more than it has to be.
   gtag('set', 'user_properties', {
-    ...playerUserProperties(profile, app),
+    ...playerUserProperties(profile, app, capability),
     ...clampAll(config, MAX_USER_VALUE)
   })
-  gtag('event', PLAYER_EVENT, playerEventParams(profile, app, { ...config, ...extra }))
+  gtag('event', PLAYER_EVENT, playerEventParams(profile, app, { ...config, ...extra }, capability))
   return true
 }

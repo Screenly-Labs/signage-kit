@@ -15,6 +15,7 @@
     "./branding": "./src/branding.ts",
     "./analytics": "./src/analytics.ts",
     "./analytics-schema": "./src/analytics-schema.ts",
+    "./capability": "./src/capability.ts",
     "./analytics-server": "./src/analytics-server.ts",
     "./profiler": "./src/profiler.ts",
     "./gate": {
