@@ -45,7 +45,12 @@ describe('playerUserProperties', () => {
       player_engine_version: '69',
       player_below_floor: 'true',
       player_confidence: 'high',
-      player_sources: 'userAgent'
+      player_sources: 'userAgent',
+      // No capability argument, so nothing was probed. These read as the sentinel rather
+      // than as `false`, because "we did not look" is not "we looked and it is fine".
+      player_degraded: 'unknown',
+      player_degraded_reason: 'unknown',
+      player_css_support: 'unknown'
     })
   })
 
@@ -150,6 +155,50 @@ describe('trackPlayer', () => {
     expect(userCall[1]).toBe('user_properties')
     expect(eventCall[0]).toBe('event')
     expect(eventCall[1]).toBe(PLAYER_EVENT)
+  })
+
+  // The capability fields exist to cover the fleet whose UA carries no version, so what
+  // matters is that trackPlayer PROBES rather than relying on the caller to pass anything.
+  // That is what lets all 16 apps pick this up from a version bump alone, and it is also the
+  // only path that works for the Worker apps, whose profile is built server-side where there
+  // is nothing to feature-detect.
+  it('probes the window itself and reports capability at both scopes', () => {
+    const calls: Call[] = []
+    const win = {
+      gtag: (...args: unknown[]) => calls.push(args as Call),
+      Element: { prototype: { replaceChildren: () => {} } },
+      navigator: { deviceMemory: 8, hardwareConcurrency: 8 },
+      CSS: { supports: () => true },
+      CSSLayerBlockRule: class {}
+    } as never
+
+    // A profile with NO engine version at all: the Screenly v1 case, where player_below_floor
+    // is structurally unknowable and the measured fields have to carry the answer.
+    expect(
+      trackPlayer(profile({ engine: { name: 'chromium', version: null }, belowFloor: null }), {
+        app: 'weather',
+        win
+      })
+    ).toBe(true)
+
+    const [userCall, eventCall] = calls
+    if (!userCall || !eventCall) throw new Error('expected a set and an event call')
+    for (const props of [userCall[2], eventCall[2]] as Array<Record<string, unknown>>) {
+      expect(props.player_below_floor).toBe('unknown') // UA cannot say, and does not pretend to
+      expect(props.player_degraded).toBe('false') // measurement can
+      expect(props.player_degraded_reason).toBe('none')
+      expect(props.player_css_support).toBe('container+has+is+layers')
+    }
+  })
+
+  it('reports capability as unknown when the window has nothing to probe', () => {
+    const { calls, win } = spyWin()
+    trackPlayer(profile(), { app: 'weather', win })
+    const userProps = calls[0]?.[2] as Record<string, unknown>
+    // spyWin has a gtag and nothing else, so the engine probe finds no Element. It degrades
+    // defensively rather than claiming the screen is fine.
+    expect(userProps.player_degraded).toBe('true')
+    expect(userProps.player_degraded_reason).toBe('old')
   })
 
   it('sends the same vendor at both scopes', () => {

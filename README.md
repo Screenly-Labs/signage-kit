@@ -32,6 +32,7 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/analytics` | `trackPlayer()` — report the player profile to GA4 as user properties + a `player_detected` event |
 | `@screenly-labs/signage-kit/analytics-server` | `playerProfileResponse()` — Worker route serving the live request's profile `no-store`, for the header-enriched vendors |
 | `@screenly-labs/signage-kit/analytics-schema` | `PLAYER_DIMENSIONS`, `PLAYER_METRICS` — the GA4 custom dimensions/metrics to register, as data |
+| `@screenly-labs/signage-kit/capability` | `detectCapability()` — measured degraded verdict + CSS support, for the screens whose UA has no version |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
 | `@screenly-labs/signage-kit/styles/fonts.css` | `@font-face` for the canonical webfont set (Fraunces, Hanken Grotesk, Bricolage, Newsreader, Space Mono, JetBrains Mono) |
@@ -228,7 +229,9 @@ Three platform/engine rules are worth knowing before you read a report:
 
 `belowFloor` is still `null` whenever the UA carries no version token at all, which
 includes the Screenly v1 viewer. Fixing the engine family does not conjure a version that
-was never in the string, so do not treat `player_below_floor` as a fleet-wide signal.
+was never in the string, so `player_below_floor` is not a fleet-wide signal and never can be.
+Use the measured `player_degraded` and `player_css_support` for that; see
+[Measured capability](#measured-capability-and-why-it-exists-alongside-player_below_floor).
 
 ## Player telemetry (GA4)
 
@@ -294,7 +297,44 @@ in as data, in `./analytics-schema`, rather than living only in 16 admin screens
 | `player_confidence` | USER | `high` / `medium` / `low` — filter to high to trust a split |
 | `player_sources` | USER | which signals were available; `requestedWith` marks a Worker-enriched row |
 | `player_app` | USER | which app reported, so a blended report stays readable |
+| `player_degraded` | USER | `true` / `false` / `unknown` — **measured**, is this screen on the degraded path |
+| `player_degraded_reason` | USER | `none` / `old` / `slow` / `old+slow` / `probe-failed` |
+| `player_css_support` | USER | measured CSS features, sorted and `+` joined: `is`, `layers`, `has`, `container` |
 | `player_engine_version` | EVENT **metric** | same param as a number, so GA4 can average it |
+
+### Measured capability, and why it exists alongside `player_below_floor`
+
+`player_below_floor` is read off the UA version, and that fails completely on the largest
+fleet in the census: the Screenly v1 viewer sends no version token, so the field was
+`unknown` for 14,396 of 16,918 attributed screens on one app. 85% of the fleet had no floor
+signal.
+
+A probe cannot fix that by restating the floor. `FLOOR` is `chrome >= 87, firefox >= 78,
+safari >= 14.1` and no cross-engine API lands on exactly those versions, so `./capability`
+reports two things that are exact instead:
+
+- **`player_degraded`** is the degraded gate's own predicate, re-run at report time. Exact by
+  construction, and populated on every screen with a DOM.
+- **`player_css_support`** is a **set**, not a tier, because the versions are not monotonic
+  across engines: Firefox shipped container queries in 110 and `:has()` only in 121. `layers`
+  is the one with a decision attached, since `build.js` rewrites `@layer` into `:not(#\#)`
+  specificity hacks for engines below Chromium 99, and that rewrite is a standing tax on
+  every Tailwind app's CSS.
+
+`player_below_floor` is deliberately left alone rather than repurposed. GA4 registration is
+not retroactive, so changing a live dimension's meaning would make every historical row
+silently incomparable, and keeping both allows the probe to be cross-checked against the UA
+verdict on the screens where both exist.
+
+The measurement happens in the kit rather than by reading `html.legacy`, because the gate is
+inlined into HTML that is cached (a 12h SSR page cache on the Worker apps, build-time
+injection on the static ones) while `main.js` turns over on deploy. It is also the only
+option for the Worker apps, whose profile is built server-side where there is nothing to
+feature-detect. `test/capability.test.ts` executes the real `GATE` string against the same
+synthetic environments to keep the two copies of the predicate from drifting.
+
+`trackPlayer()` does the probing itself, so an app picks all three fields up from a version
+bump with no code change.
 
 `player_engine_version` appears twice on purpose. Dimensions and metrics are separate
 namespaces, so the USER dimension segments devices ("everything on Chromium 69") while

@@ -30,7 +30,8 @@ export interface DimensionSpec {
  * only the one event that carried the params. It also makes `totalUsers` broken down by
  * `player_vendor` a device census directly.
  *
- * GA4 allows 25 user-scoped dimensions per property; this uses 10.
+ * GA4 allows 25 user-scoped dimensions per property; this uses 13, and each app adds its own
+ * config keys on top (at most 5 today), so there is room but it is not unlimited.
  */
 export const PLAYER_DIMENSIONS: readonly DimensionSpec[] = Object.freeze([
   {
@@ -101,6 +102,30 @@ export const PLAYER_DIMENSIONS: readonly DimensionSpec[] = Object.freeze([
     displayName: 'Player app',
     description:
       'Which app reported. Redundant within one property; keeps a blended report readable and survives any future consolidation.',
+    scope: 'USER'
+  },
+  // Measured in the browser rather than parsed from the UA, which is why they exist: the
+  // Screenly v1 viewer sends no version token, so player_below_floor is null for the largest
+  // fleet in the census. See ./capability.
+  {
+    parameterName: 'player_degraded',
+    displayName: 'Player on degraded path',
+    description:
+      "true / false / unknown. Measured, not inferred: the degraded gate's own predicate, so it is populated even where the UA carries no version.",
+    scope: 'USER'
+  },
+  {
+    parameterName: 'player_degraded_reason',
+    displayName: 'Player degraded reason',
+    description:
+      'none | old | slow | old+slow | probe-failed. Splits a stale engine from weak hardware, which the UA cannot see at all.',
+    scope: 'USER'
+  },
+  {
+    parameterName: 'player_css_support',
+    displayName: 'Player CSS support',
+    description:
+      "Measured CSS features, sorted and + joined: is, layers, has, container. 'none' if none, 'unknown' if unprobed. A set: versions are not monotonic.",
     scope: 'USER'
   }
 ])
