@@ -125,6 +125,14 @@ export interface PlayerProfile {
    */
   deviceId: string | null
   /**
+   * The same device key formatted as a GA4 `client_id`, or `null` when there is no device id.
+   *
+   * This is what makes GA4's own unique identifier stable for a screen: `./analytics-bootstrap`
+   * reads it and passes it to `gtag('config')`, so one screen is one GA4 user however often its
+   * storage is wiped. Derived from the same hash as `deviceId`, so the two always agree.
+   */
+  gaClientId: string | null
+  /**
    * Screenly player generation from `X-Screenly-version`, e.g. `v2`. NOT a browser engine
    * version, so it deliberately does not feed `belowFloor`.
    */
@@ -529,6 +537,8 @@ export const detectPlayer = (
     sources,
     // Filled in by ./analytics-server, which hashes it. Never the raw id: see PlayerProfile.
     deviceId: null,
+    // Both filled in by ./analytics-server alongside deviceId, from the same hash.
+    gaClientId: null,
     swVersion: screenly?.playerVersion ?? null,
     // `null`, not `false`, when there was no request to inspect. In the browser the headers are
     // invisible, so their absence is not evidence that metadata is off.

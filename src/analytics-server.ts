@@ -19,7 +19,7 @@
 
 import { detectPlayerFromRequest } from './profiler'
 import type { PlayerProfile } from './profiler'
-import { hashDeviceId, screenlyDeviceId } from './screenly-metadata'
+import { gaClientIdFrom, hashDeviceId, screenlyDeviceId } from './screenly-metadata'
 
 /**
  * The route every Worker app mounts, so the client half can fetch a profile without
@@ -60,7 +60,10 @@ const withDeviceId = async (
   const profile = detectPlayerFromRequest(request)
   const raw = screenlyDeviceId(request)
   if (!raw) return profile
-  return { ...profile, deviceId: await hashDeviceId(raw, salt) }
+  const hash = await hashDeviceId(raw, salt)
+  // Both derived from the one hash, so the GA4 client_id and the player_device dimension can
+  // never disagree about which screen this is.
+  return { ...profile, deviceId: hash, gaClientId: gaClientIdFrom(hash) }
 }
 
 /** Options for the two entry points. */
