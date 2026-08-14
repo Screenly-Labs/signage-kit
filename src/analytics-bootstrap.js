@@ -59,10 +59,14 @@
 export function analyticsBootstrap({ gaId, profilePath, timeoutMs = 1500, configParams }) {
   if (!gaId) throw new Error('analyticsBootstrap: gaId is required')
 
-  // Serialised for embedding in a <script>. `</` is the only sequence that can terminate the
-  // element early, and U+2028/9 are literal line terminators in a script context.
+  // Serialised for embedding in a <script>. Escaping `<` alone is sufficient to keep injected
+  // markup inert, since `</` is the only sequence that can terminate the element early, but `>`
+  // is escaped too: this replaces per-app helpers that escaped both, and a drop-in for something
+  // security-relevant should be at least as strict as what it replaces, never less. U+2028/9 are
+  // literal line terminators in a script context.
   const params = JSON.stringify(configParams ?? {})
     .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')
   // Omitted entirely when empty, so an app with no params emits exactly Google's own snippet.
