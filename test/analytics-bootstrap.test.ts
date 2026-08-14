@@ -172,7 +172,8 @@ describe('analyticsBootstrap — Worker apps', () => {
       configParams: { source: '</script><script>alert(1)</script>' }
     })
     expect(html).not.toContain('</script><script>alert(1)')
-    expect(html).toContain('\\u003c/script')
+    // Both brackets, matching the per-app helpers this replaces.
+    expect(html).toContain('\\u003c/script\\u003e\\u003cscript\\u003e')
   })
 })
 
