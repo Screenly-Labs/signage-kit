@@ -1,6 +1,6 @@
 {
   "name": "@screenly-labs/signage-kit",
-  "version": "2026.8.6",
+  "version": "2026.8.7",
   "description": "Shared build pipeline, degraded-mode layer, and base Tailwind preset for Screenly-Labs signage apps.",
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -37,7 +37,11 @@
     "./styles/brand.css": "./styles/brand.css",
     "./styles/header.css": "./styles/header.css",
     "./styles/stage.css": "./styles/stage.css",
-    "./screenly-logo.svg": "./styles/screenly-logo.svg"
+    "./screenly-logo.svg": "./styles/screenly-logo.svg",
+    "./analytics-bootstrap": {
+      "types": "./src/analytics-bootstrap.d.ts",
+      "default": "./src/analytics-bootstrap.js"
+    }
   },
   "files": [
     "src",

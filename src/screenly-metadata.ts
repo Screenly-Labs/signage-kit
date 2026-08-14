@@ -14,17 +14,17 @@
 //
 // WHY THIS MATTERS MORE THAN ANY FINGERPRINT.
 //
-// GA4's client_id lives in the _ga cookie, and these players largely start with fresh
-// storage, so ids churn constantly: across a week almost none survived a single day
-// and nearly every user looked brand new. Worse, the churn rate is vendor-dependent by two orders of
-// sharply between players, so totalUsers is not comparable ACROSS vendors, not merely inflated.
+// GA4's client_id lives in the _ga cookie, and these players largely start with fresh storage,
+// so ids churn constantly: almost none survive a day, and nearly every user looks brand new. The
+// churn rate also differs sharply between players, so totalUsers is not comparable ACROSS
+// vendors, not merely inflated.
 //
 // Passive fingerprinting cannot fix that here, and would fail in a worse direction. Signage
-// fleets are deliberately identical: whole populations here share one frozen browser image, and
-// the dominant player UA carries no version token at all. Canvas, WebGL, audio, fonts and resolution are identical across identical
-// hardware, so a fingerprint would collapse thousands of screens into one identity. Today we
-// over-count by roughly the window length, which is detectable; a colliding fingerprint would
-// under-count silently, which is not.
+// fleets are deliberately identical: whole populations share one frozen browser image, and the
+// dominant player UA carries no version token at all. Canvas, WebGL, audio, fonts and resolution
+// are identical across identical hardware, so a fingerprint-derived id would collapse many
+// screens into one identity. The present over-count is detectable; a colliding fingerprint
+// under-counts silently, which is not.
 //
 // `X-Screenly-hostname` sidesteps all of it by being an actual device id.
 //
@@ -97,6 +97,27 @@ export const screenlyDeviceId = (request: { headers: Headers }): string | null =
  * the confirmation gap. The point of hashing either way is that GA4 never receives a raw
  * Screenly device id, which would otherwise be a directly joinable key into device inventory.
  */
+/**
+ * The same device key, formatted as a GA4 `client_id`.
+ *
+ * This is the field that makes GA4's own unique identifier stable for a screen. Set as
+ * `client_id` at config time, one screen is one GA4 user no matter how often its storage is
+ * wiped, instead of minting a fresh id on every page load.
+ *
+ * Shaped as `<uint32>.<uint32>` to match the format GA4 generates natively (a random int and a
+ * timestamp) rather than passing raw hex, because an unusual value risks being normalised or
+ * rejected somewhere in the pipeline and this costs nothing. Derived from the first 64 bits of
+ * the same hash, so `player_device` and the `client_id` always agree about which screen this is.
+ *
+ * 64 bits is ample: even at a million devices the collision probability is far below one in a
+ * million, and a collision would merely merge two screens rather than corrupt anything.
+ */
+export const gaClientIdFrom = (hash: string): string => {
+  const high = Number.parseInt(hash.slice(0, 8), 16)
+  const low = Number.parseInt(hash.slice(8, 16), 16)
+  return `${high}.${low}`
+}
+
 export const hashDeviceId = async (deviceId: string, salt = ''): Promise<string> => {
   // NUL separator so ('a', 'bc') and ('ab', 'c') cannot hash to the same value. Written as an
   // escape, not a literal: a raw NUL in the source makes grep treat the file as binary.

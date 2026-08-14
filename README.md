@@ -33,6 +33,7 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/analytics-server` | `playerProfileResponse()` — Worker route serving the live request's profile `no-store`, for the header-enriched vendors |
 | `@screenly-labs/signage-kit/analytics-schema` | `PLAYER_DIMENSIONS`, `PLAYER_METRICS` — the GA4 custom dimensions/metrics to register, as data |
 | `@screenly-labs/signage-kit/capability` | `detectCapability()` — measured degraded verdict + CSS support, for the screens whose UA has no version |
+| `@screenly-labs/signage-kit/analytics-bootstrap` | `analyticsBootstrap()` — the inline `<head>` GA4 tag that pins `client_id` to the device |
 | `@screenly-labs/signage-kit/screenly-metadata` | `screenlyMetadataFromRequest()`, `screenlyDeviceId()`, `hashDeviceId()` — the `X-Screenly-*` headers, incl. the only stable per-device id |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
@@ -335,6 +336,16 @@ on nearly every page load while another keeps one across many. A player's
 apparent share of `totalUsers` therefore mostly reflects how it handles storage.
 
 So: never compare `totalUsers` across vendors, and report absolute figures as **app runs**.
+
+**`client_id` is pinned to the device** by `./analytics-bootstrap`, which is what makes GA4's own
+unique identifier stable for a screen instead of churning. It is an inline `<head>` snippet rather
+than part of the app bundle for two reasons: `client_id` is stamped onto every event as it is sent,
+so `config` has to wait for the device id and therefore has to own the call; and a share of screens
+fire a `page_view` and never load the bundle, so moving `config` there would turn a counting fix
+into a data loss. It cannot be rendered into the HTML either, because that HTML is edge-cached with
+no per-screen component, so every screen would inherit whichever one warmed the cache. Every path
+ends in exactly one `config` call, including a timeout, so a stalled fetch can never leave a screen
+silent.
 
 `player_device` is the fix, where it is available. It comes from `X-Screenly-hostname`, an actual
 Screenly device id (`srly-jmar75ko6xp651j`), hashed to 128 bits before it leaves the Worker so

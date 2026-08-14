@@ -5,7 +5,7 @@ import {
   playerProfileFromRequest,
   playerProfileResponse
 } from '../src/analytics-server'
-import { hashDeviceId } from '../src/screenly-metadata'
+import { gaClientIdFrom, hashDeviceId } from '../src/screenly-metadata'
 
 const req = (headers: Record<string, string>) => ({ headers: new Headers(headers) })
 
@@ -158,5 +158,53 @@ describe('playerProfileResponse', () => {
   it('exposes a shared path so apps do not diverge', () => {
     expect(PLAYER_PROFILE_PATH).toBe('/api/player')
     expect(PLAYER_PROFILE_HEADERS['cache-control']).toContain('no-store')
+  })
+})
+
+describe('GA4 client_id pinned to the device', () => {
+  it('derives a client_id from the same hash, so the two always agree', async () => {
+    const profile = await playerProfileFromRequest(req(SCREENLY_META))
+    const hash = await hashDeviceId('srly-jmar75ko6xp651j')
+    expect(profile.deviceId).toBe(hash)
+    expect(profile.gaClientId).toBe(gaClientIdFrom(hash))
+  })
+
+  it('is THE SAME for a device across requests, which is the entire point', async () => {
+    // Storage wipes are what break GA4's own client_id. This value is derived, not stored, so
+    // it cannot be wiped.
+    const first = await playerProfileFromRequest(req(SCREENLY_META))
+    const second = await playerProfileFromRequest(req(SCREENLY_META))
+    expect(first.gaClientId).toBe(second.gaClientId)
+  })
+
+  it('differs between devices', async () => {
+    const a = await playerProfileFromRequest(req(SCREENLY_META))
+    const b = await playerProfileFromRequest(
+      req({ ...SCREENLY_META, 'x-screenly-hostname': 'srly-adifferentdevice' })
+    )
+    expect(a.gaClientId).not.toBe(b.gaClientId)
+  })
+
+  it('looks like a client_id GA4 generated itself', async () => {
+    // <uint32>.<uint32>, matching GA4's native shape, so nothing in the pipeline is tempted to
+    // normalise or reject it.
+    const { gaClientId } = await playerProfileFromRequest(req(SCREENLY_META))
+    expect(gaClientId).toMatch(/^\d+\.\d+$/)
+    const [high, low] = (gaClientId as string).split('.').map(Number)
+    for (const part of [high, low]) {
+      expect(Number.isInteger(part)).toBe(true)
+      expect(part).toBeGreaterThanOrEqual(0)
+      expect(part).toBeLessThanOrEqual(0xffffffff)
+    }
+  })
+
+  it('is null when there is no device id, so the snippet falls back to GA4 defaults', async () => {
+    expect((await playerProfileFromRequest(req(YODECK))).gaClientId).toBeNull()
+  })
+
+  it('never leaks the raw device id through the new field either', async () => {
+    const body = await (await playerProfileResponse(req(SCREENLY_META))).text()
+    expect(body).not.toContain('srly-jmar75ko6xp651j')
+    expect(body).toContain('"gaClientId"')
   })
 })
