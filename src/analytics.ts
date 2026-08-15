@@ -289,6 +289,24 @@ export interface TrackPlayerOptions {
    * so a value that varies between events would silently overwrite itself.
    */
   extra?: Record<string, string | number>
+  /**
+   * Fire the `page_view` from here, once the user properties are set.
+   *
+   * PAIRS WITH `send_page_view: false` ON THE TAG. Set one without the other and the app
+   * either double-counts every page view or stops counting them entirely, so the two live
+   * and die together. The app's inline snippet carries a comment pointing back here.
+   *
+   * For the static apps, which have no server. A Worker app instead has the profile in hand
+   * before it configures (see `serverUserProperties`), so it keeps GA4's automatic page view
+   * and simply sets the properties first. That is the better trade where it is available: it
+   * cannot lose a page view, whereas this defers the page view until `main.js` runs, so a
+   * load that never gets that far now reports nothing at all rather than an unattributed
+   * page view. Measured on 2026-08-14 that is 0.3% or less of loads on every static app
+   * (`player_detected` lands on 99.7% to 100% of their page views), against 68% of their
+   * page views currently carrying no player fields. On Weather the same gap is 1.7%, which
+   * is why the Worker apps do not use this.
+   */
+  sendPageView?: boolean
   /** Injectable for tests. */
   win?: Window & { gtag?: Gtag }
 }
@@ -303,7 +321,13 @@ export interface TrackPlayerOptions {
  * there for callers and tests that want to tell the two cases apart.
  */
 export const trackPlayer = (profile: PlayerProfile, options: TrackPlayerOptions): boolean => {
-  const { app, config, extra, win = typeof window !== 'undefined' ? window : undefined } = options
+  const {
+    app,
+    config,
+    extra,
+    sendPageView,
+    win = typeof window !== 'undefined' ? window : undefined
+  } = options
   const gtag = (win as { gtag?: Gtag } | undefined)?.gtag
   if (typeof gtag !== 'function') return false
   // Probed here rather than taken from the caller, so all 16 apps get the capability fields
@@ -316,6 +340,12 @@ export const trackPlayer = (profile: PlayerProfile, options: TrackPlayerOptions)
     ...playerUserProperties(profile, app, capability),
     ...clampAll(config, MAX_USER_VALUE)
   })
+  // After the properties, which is the entire reason it is fired here rather than by
+  // `config`. GA4 stamps the properties in force at collection time onto each event, so a
+  // page view sent by `config` goes out before this screen has been profiled at all. Firing
+  // it one line after the `set` puts it in exactly the position `player_detected` already
+  // occupies, and that event is attributed on essentially every load.
+  if (sendPageView) gtag('event', 'page_view')
   gtag('event', PLAYER_EVENT, playerEventParams(profile, app, { ...config, ...extra }, capability))
   return true
 }

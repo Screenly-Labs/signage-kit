@@ -249,3 +249,40 @@ describe('trackPlayer', () => {
     expect(trackPlayer(profile(), { app: 'weather', win: undefined })).toBe(false)
   })
 })
+
+// The static apps have no server, so they cannot know the player before `config` fires.
+// Instead their tag is configured with `send_page_view: false` and the page view is fired
+// here, one line after the user properties, which is the position `player_detected` already
+// occupies and is attributed on essentially every load.
+describe('trackPlayer: deferring the page view', () => {
+  it('fires page_view AFTER the user properties, so it carries the player fields', () => {
+    const { calls, win } = spyWin()
+    trackPlayer(profile(), { app: 'quotes', sendPageView: true, win })
+    const setAt = calls.findIndex((c) => c[0] === 'set' && c[1] === 'user_properties')
+    const viewAt = calls.findIndex((c) => c[0] === 'event' && c[1] === 'page_view')
+    expect(setAt).toBeGreaterThanOrEqual(0)
+    expect(viewAt).toBeGreaterThan(setAt)
+  })
+
+  it('still fires player_detected, so the countable occurrence is not lost', () => {
+    const { calls, win } = spyWin()
+    trackPlayer(profile(), { app: 'quotes', sendPageView: true, win })
+    expect(calls.filter((c) => c[0] === 'event' && c[1] === PLAYER_EVENT)).toHaveLength(1)
+    expect(calls.filter((c) => c[0] === 'event' && c[1] === 'page_view')).toHaveLength(1)
+  })
+
+  it('sends NO page_view unless asked, so a Worker app cannot double-count', () => {
+    // The Worker apps keep GA4's automatic page view and set the properties before it.
+    // If this defaulted on, every one of their loads would be counted twice.
+    const { calls, win } = spyWin()
+    trackPlayer(profile(), { app: 'weather', win })
+    expect(calls.filter((c) => c[1] === 'page_view')).toHaveLength(0)
+  })
+
+  it('sends nothing at all when gtag is missing, page view included', () => {
+    // A blocked or unloaded tag must not become an exception on an unattended screen.
+    expect(trackPlayer(profile(), { app: 'quotes', sendPageView: true, win: {} as never })).toBe(
+      false
+    )
+  })
+})
