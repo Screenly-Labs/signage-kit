@@ -15,8 +15,13 @@
 // while the HTML itself is served from cache.
 //
 // Kept in its own module so importing `./analytics` into a browser bundle never pulls
-// the server path in with it.
+// the server path in with it. The dependency runs one way only: this module imports
+// `./analytics` to build the user properties, so the GA4 parameter names have exactly one
+// definition. Nothing it pulls in touches the DOM at module level, so a Worker bundle is
+// unaffected.
 
+import { serverUserProperties } from './analytics'
+import type { ServerTelemetry } from './analytics'
 import { detectPlayerFromRequest } from './profiler'
 import type { PlayerProfile } from './profiler'
 import { gaClientIdFrom, hashDeviceId, screenlyDeviceId } from './screenly-metadata'
@@ -74,7 +79,31 @@ export interface PlayerProfileOptions {
    * could confirm a given id by computing its hash. Pass one to close that gap.
    */
   salt?: string
+  /**
+   * The app's own name, e.g. `weather`. Supplying it adds `userProperties` to the payload, so
+   * the inline bootstrap can set the player fields BEFORE the automatic `page_view` and that
+   * page view is attributed (see `serverUserProperties`). Omit it and the payload is exactly
+   * what it was: the opt-in is explicit, so a caller cannot end up shipping `player_app:
+   * "unknown"` to GA4 by forgetting an argument.
+   */
+  app?: string
 }
+
+/**
+ * What `/api/player` actually returns: the profile, plus the ready-made user properties when
+ * the caller named its app.
+ *
+ * Built here rather than in the snippet on purpose. The inline bootstrap is an unminified
+ * string in every page's `<head>`, and teaching it to map a profile onto GA4 parameter names
+ * would put a second copy of the schema somewhere no test can reach. This keeps the snippet
+ * dumb enough to be obviously correct: it forwards an object it never inspects.
+ */
+export interface PlayerProfilePayload extends PlayerProfile {
+  userProperties?: ServerTelemetry
+}
+
+const payload = (profile: PlayerProfile, app?: string): PlayerProfilePayload =>
+  app ? { ...profile, userProperties: serverUserProperties(profile, app) } : profile
 
 /**
  * Profile the live request and return it as an uncacheable JSON response.
@@ -86,7 +115,7 @@ export const playerProfileResponse = async (
   request: { headers: Headers },
   options: PlayerProfileOptions = {}
 ): Promise<Response> =>
-  new Response(JSON.stringify(await withDeviceId(request, options.salt)), {
+  new Response(JSON.stringify(payload(await withDeviceId(request, options.salt), options.app)), {
     status: 200,
     headers: { ...PLAYER_PROFILE_HEADERS }
   })
@@ -99,4 +128,4 @@ export const playerProfileResponse = async (
 export const playerProfileFromRequest = async (
   request: { headers: Headers },
   options: PlayerProfileOptions = {}
-): Promise<PlayerProfile> => withDeviceId(request, options.salt)
+): Promise<PlayerProfilePayload> => payload(await withDeviceId(request, options.salt), options.app)
