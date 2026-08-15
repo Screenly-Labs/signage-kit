@@ -293,8 +293,27 @@ bootstrap sets **before** it calls `config`. Without it the automatic `page_view
 ahead of `trackPlayer` and carries no player fields, so the first page view under any
 `client_id` is unattributed. On a player that starts each load with fresh storage that is
 every page view it ever sends: `player_vendor=yodeck` measured 150 users and **zero** page
-views on 2026-08-14, and 21% of all app runs carried no player fields. Static apps have no
-server to build the profile, so they do not get this yet.
+views on 2026-08-14, and 21% of all app runs carried no player fields.
+
+**A static app has no server**, so it cannot know the player before `config` fires. It
+suppresses GA4's automatic page view and fires it from `trackPlayer` instead, one line after
+the user properties:
+
+```html
+<!-- index.html: paired with sendPageView below. Never set one without the other. -->
+<script>gtag('config', 'G-XXXXXXX', { send_page_view: false })</script>
+```
+
+```ts
+trackPlayer(detectPlayer(), { app: 'quotes', sendPageView: true })
+```
+
+The two options pair: set one without the other and the app either double-counts every page
+view or stops counting them. The trade is that a load which never reaches `main.js` now
+reports nothing instead of an unattributed page view. That is 0.3% or less of loads on every
+static app, measured, against 68% of their page views carrying no player fields before. On
+Weather the same gap is 1.7%, which is why the Worker apps keep the automatic page view
+and use the `app` option above instead.
 
 `player_sources` records which signals were available, so a report can tell an enriched
 row from a user-agent-only one rather than silently mixing them.
