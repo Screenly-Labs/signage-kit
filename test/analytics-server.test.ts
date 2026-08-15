@@ -208,3 +208,50 @@ describe('GA4 client_id pinned to the device', () => {
     expect(body).toContain('"gaClientId"')
   })
 })
+
+// Without these the first page view of every new client_id carries no player fields, and on a
+// player that starts each load with fresh storage that is every page view it will ever send.
+describe('user properties for the first page view', () => {
+  it('adds them to the payload when the caller names its app', async () => {
+    const profile = await playerProfileFromRequest(req(YODECK), { app: 'clock' })
+    expect(profile.userProperties?.player_vendor).toBe('yodeck')
+    expect(profile.userProperties?.player_app).toBe('clock')
+  })
+
+  it('omits them entirely when no app is named, rather than guessing', async () => {
+    // An app that has not opted in keeps exactly the old payload, and never ships
+    // player_app "unknown" to GA4 because an argument was forgotten.
+    const profile = await playerProfileFromRequest(req(YODECK))
+    expect(profile.userProperties).toBeUndefined()
+  })
+
+  it('leaves out the fields that need a DOM, instead of sending the unknown sentinel', async () => {
+    // trackPlayer probes and sets these a moment later. Padding them here would fill the
+    // "we could not tell" buckets with rows that had merely not been measured yet.
+    const profile = await playerProfileFromRequest(req(YODECK), { app: 'clock' })
+    const keys = Object.keys(profile.userProperties ?? {})
+    expect(keys).not.toContain('player_degraded')
+    expect(keys).not.toContain('player_degraded_reason')
+    expect(keys).not.toContain('player_css_support')
+    expect(keys).toContain('player_engine')
+  })
+
+  it('carries the header-only vendor, which is the whole reason the server profiles', async () => {
+    const profile = await playerProfileFromRequest(req(YODECK), { app: 'clock' })
+    expect(profile.userProperties?.player_sources).toContain('requestedWith')
+  })
+
+  it('serves them over the route too, not just the plain-object entry point', async () => {
+    const response = await playerProfileResponse(req(YODECK), { app: 'clock' })
+    const body = (await response.json()) as { userProperties?: Record<string, string> }
+    expect(body.userProperties?.player_vendor).toBe('yodeck')
+    // Still uncacheable: this response now carries per-screen identity AND its properties.
+    expect(response.headers.get('cache-control')).toContain('no-store')
+  })
+
+  it('agrees with the device id it ships alongside', async () => {
+    const profile = await playerProfileFromRequest(req(SCREENLY_META), { app: 'weather' })
+    expect(profile.userProperties?.player_device).toBe(profile.deviceId ?? '')
+    expect(profile.userProperties?.player_metadata).toBe('true')
+  })
+})

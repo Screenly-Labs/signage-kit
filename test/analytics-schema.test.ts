@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { playerEventParams, playerUserProperties } from '../src/analytics'
+import { playerEventParams, playerUserProperties, serverUserProperties } from '../src/analytics'
 import { PLAYER_DIMENSIONS, PLAYER_METRICS } from '../src/analytics-schema'
 import type { PlayerProfile } from '../src/profiler'
 
@@ -71,6 +71,36 @@ describe('schema respects the GA4 limits', () => {
     for (const d of PLAYER_DIMENSIONS) {
       expect(d.displayName.length).toBeGreaterThan(0)
       expect(d.description.length).toBeGreaterThan(20)
+    }
+  })
+})
+
+// serverUserProperties is derived from playerUserProperties so a new field flows into the
+// bootstrap payload without a second edit. These pin that relationship down.
+describe('the server-side subset stays in step', () => {
+  it('is playerUserProperties minus exactly the three probed fields', () => {
+    const all = Object.keys(playerUserProperties(profile, 'weather'))
+    const server = Object.keys(serverUserProperties(profile, 'weather'))
+    expect(server.sort()).toEqual(
+      all
+        .filter(
+          (k) => !['player_degraded', 'player_degraded_reason', 'player_css_support'].includes(k)
+        )
+        .sort()
+    )
+  })
+
+  it('agrees value for value with the full set on the fields it does send', () => {
+    const all: Record<string, string> = { ...playerUserProperties(profile, 'weather') }
+    const server: Record<string, string> = { ...serverUserProperties(profile, 'weather') }
+    for (const [key, value] of Object.entries(server)) expect(value).toBe(all[key] ?? '')
+  })
+
+  it('only sends parameters the schema actually registers', () => {
+    // Same failure the suite above guards: an unregistered param is collected and unreportable.
+    const declared = PLAYER_DIMENSIONS.map((d) => d.parameterName)
+    for (const key of Object.keys(serverUserProperties(profile, 'weather'))) {
+      expect(declared).toContain(key)
     }
   })
 })

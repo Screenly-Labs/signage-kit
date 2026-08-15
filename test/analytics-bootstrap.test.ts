@@ -208,3 +208,65 @@ describe('analyticsBootstrap — the stall, which is the dangerous case', () => 
     expect(configCalls(readCalls())).toHaveLength(1)
   })
 })
+
+// The first page view of any client_id is sent by `config` itself, before `main.js` can run
+// `trackPlayer`. Unless the player fields are set here, a screen that mints a fresh id on every
+// load never attributes a single page view. Yodeck measured 150 users and 0 page views.
+describe('analyticsBootstrap: attributing the first page view', () => {
+  const html = () => analyticsBootstrap({ gaId: 'G-TEST', profilePath: '/api/player' })
+  const setCalls = (calls: unknown[][]) =>
+    calls.filter((c) => c[0] === 'set' && c[1] === 'user_properties')
+
+  const PROPS = { player_vendor: 'yodeck', player_platform: 'firetv', player_app: 'clock' }
+
+  it('sets the player user properties from the profile payload', async () => {
+    const { calls } = await run(html(), async () => ({
+      ok: true,
+      json: async () => ({ gaClientId: '1.2', userProperties: PROPS })
+    }))
+    expect(setCalls(calls)).toHaveLength(1)
+    // Forwarded verbatim: the snippet never inspects them, so the schema lives in one place.
+    expect(setCalls(calls)[0]?.[2]).toEqual(PROPS)
+  })
+
+  it('sets them BEFORE config, which is the entire point', async () => {
+    // After config the page_view has already gone out, and this would be a no-op that looks
+    // like a fix. Ordering is the behaviour under test, not an implementation detail.
+    const { calls } = await run(html(), async () => ({
+      ok: true,
+      json: async () => ({ gaClientId: '1.2', userProperties: PROPS })
+    }))
+    const setAt = calls.findIndex((c) => c[0] === 'set' && c[1] === 'user_properties')
+    const configAt = calls.findIndex((c) => c[0] === 'config')
+    expect(setAt).toBeGreaterThanOrEqual(0)
+    expect(configAt).toBeGreaterThan(setAt)
+  })
+
+  it('configures normally when the server sent no user properties', async () => {
+    // An app that has not passed `app` to playerProfileResponse yet, so the payload is the
+    // old shape. It must still configure, just without attribution.
+    const { calls } = await run(html(), async () => ({
+      ok: true,
+      json: async () => ({ gaClientId: '1.2' })
+    }))
+    expect(setCalls(calls)).toHaveLength(0)
+    expect(configCalls(calls)).toHaveLength(1)
+  })
+
+  it('sets nothing on the timeout path, where no profile ever arrived', async () => {
+    const { fireTimeout, readCalls } = await run(html(), () => new Promise(() => {}))
+    fireTimeout?.()
+    expect(setCalls(readCalls())).toHaveLength(0)
+    expect(configCalls(readCalls())).toHaveLength(1)
+  })
+
+  it('sets them even when the screen has no device id to pin', async () => {
+    // The two fixes are independent: send_metadata off still leaves a nameable player.
+    const { calls } = await run(html(), async () => ({
+      ok: true,
+      json: async () => ({ gaClientId: null, userProperties: PROPS })
+    }))
+    expect(setCalls(calls)).toHaveLength(1)
+    expect(configCalls(calls)[0]?.[2]).toEqual({})
+  })
+})

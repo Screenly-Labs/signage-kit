@@ -193,6 +193,43 @@ export const playerUserProperties = (
   player_metadata: flag(profile.hasMetadata)
 })
 
+/** The three fields that need a live DOM, so a server can never supply them. */
+const PROBED_KEYS = ['player_degraded', 'player_degraded_reason', 'player_css_support'] as const
+
+/** Everything in {@link PlayerTelemetry} except the fields that require probing a DOM. */
+export type ServerTelemetry = Omit<PlayerTelemetry, (typeof PROBED_KEYS)[number]>
+
+/**
+ * The user properties a SERVER can build, for setting BEFORE the first `page_view`.
+ *
+ * WHY THIS EXISTS, measured rather than assumed. `trackPlayer` runs from `main.js` after
+ * `DOMContentLoaded`, but the automatic `page_view` is sent by the `gtag('config')` call in
+ * the inline `<head>` snippet, which is necessarily earlier. So the first `page_view` under
+ * any given `client_id` carries no player fields at all. A screen that keeps its id attributes
+ * every LATER page view and the loss is invisible; a screen that mints a fresh id on every load
+ * attributes none of them, ever.
+ *
+ * That is not a rounding error, and it is worst exactly where the data matters most. On
+ * 2026-08-14, `player_vendor=yodeck` read 150 users, 150 sessions, 150 events and **zero** page
+ * views, every event being `player_detected`: a Fire TV WebView that starts each load with
+ * fresh storage. BrightSign showed the same shape at 913 users and 3 page views. Fleet-wide,
+ * 21% of app runs carried no player fields (13.6% on the Worker apps, 66.9% on the static
+ * ones), biased against precisely the high-churn players a census most needs to see.
+ *
+ * So `./analytics-bootstrap` sets these on the profile it already waits for, before it
+ * configures. The capability fields are omitted rather than sent as the `unknown` sentinel:
+ * they are probed a moment later by `trackPlayer`, and a real "we could not tell" bucket is
+ * worth more than one padded with rows that simply had not been measured yet.
+ *
+ * Derived from `playerUserProperties` rather than restated, so a field added there flows here
+ * without a second edit.
+ */
+export const serverUserProperties = (profile: PlayerProfile, app: string): ServerTelemetry => {
+  const properties: Record<string, string> = { ...playerUserProperties(profile, app) }
+  for (const key of PROBED_KEYS) delete properties[key]
+  return properties as ServerTelemetry
+}
+
 /**
  * The same profile as event params, for the `player_detected` event. Kept alongside
  * the user properties so there is a countable "we profiled this screen" occurrence

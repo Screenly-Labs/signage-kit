@@ -1,6 +1,33 @@
-// The GA4 bootstrap, as an inline <head> snippet, so one screen is ONE GA4 user.
+// The GA4 bootstrap, as an inline <head> snippet. It does two jobs, both of which have to
+// happen before the first event is sent: it makes one screen ONE GA4 user, and it makes that
+// screen's first page view attributable to a player.
 //
-// THE PROBLEM IT SOLVES.
+// THE SECOND PROBLEM: THE FIRST PAGE VIEW IS ALWAYS UNATTRIBUTED.
+//
+// `trackPlayer` sets the player user properties from `main.js`, after DOMContentLoaded. The
+// automatic `page_view` goes out with the `gtag('config')` call below, which is necessarily
+// earlier. So under any given client_id the first page view carries no player fields. Where the
+// id survives, every later page view is attributed and the loss is invisible; where the id is
+// minted fresh on every load, NO page view is ever attributed.
+//
+// Measured on 2026-08-14: `player_vendor=yodeck` reported 150 users, 150 sessions, 150 events
+// and zero page views, every event a `player_detected` from a Fire TV WebView that boots with
+// fresh storage each load. BrightSign showed the same shape at 913 users and 3 page views.
+// Fleet-wide 21% of app runs carried no player fields, and the bias falls on exactly the
+// high-churn players a census most needs to see.
+//
+// The fix costs nothing here, because this snippet ALREADY waits for the profile before
+// configuring: the Worker returns ready-made user properties beside it (see
+// ./analytics-server) and they are set in the same deferred moment. `trackPlayer` still runs
+// later and tops up the three measured-capability fields, which need a DOM to probe; user
+// properties are last-write-wins, so the later, richer set simply supersedes this one.
+//
+// Static apps have no server to build the profile, so they do not get this and their page
+// views stay unattributed. Closing that gap needs a user-agent-only detect inlined here, which
+// is a bigger change than it looks: the profiler is not small, and this string ships in the
+// <head> of every page.
+//
+// THE FIRST PROBLEM IT SOLVES.
 //
 // GA4's client_id lives in the _ga cookie, and these players largely boot with fresh storage,
 // so a screen mints a new client_id constantly. Real device identity made the scale of it
@@ -84,7 +111,7 @@ export function analyticsBootstrap({ gaId, profilePath, timeoutMs = 1500, config
     </script>`
   }
 
-  return `<!-- Google tag (gtag.js), client_id pinned to the device (@screenly-labs/signage-kit) -->
+  return `<!-- Google tag (gtag.js), player fields and client_id set before the first hit (@screenly-labs/signage-kit) -->
     <script>
       window.dataLayer = window.dataLayer || [];
       function gtag(){window.dataLayer.push(arguments);}
@@ -94,21 +121,27 @@ export function analyticsBootstrap({ gaId, profilePath, timeoutMs = 1500, config
         // Exactly one config call on every path, so a stalled fetch cannot leave a screen
         // silent. A screen reporting under a churning id is bad; a screen reporting nothing
         // is worse.
-        function configure(clientId) {
+        function configure(clientId, properties) {
           if (configured) return;
           configured = true;
+          // Set BEFORE config, so the automatic page_view carries the player fields. See the
+          // note above: without this, the first page view under any client_id is unattributed.
+          if (properties) gtag('set', 'user_properties', properties);
           var cfg = ${params};
           // client_id last, so it always wins over app-supplied params.
           if (clientId) cfg.client_id = clientId;
           gtag('config', '${gaId}', cfg);
         }
-        var timer = setTimeout(function () { configure(null); }, ${timeoutMs});
+        var timer = setTimeout(function () { configure(null, null); }, ${timeoutMs});
         function settle(profile) {
           // Stashed so the app bundle can reuse it instead of fetching the same no-store
           // endpoint a second time.
           window.__playerProfile = profile || null;
           clearTimeout(timer);
-          configure(profile && profile.gaClientId ? profile.gaClientId : null);
+          configure(
+            profile && profile.gaClientId ? profile.gaClientId : null,
+            profile ? profile.userProperties : null
+          );
         }
         try {
           fetch('${profilePath}', { cache: 'no-store' })

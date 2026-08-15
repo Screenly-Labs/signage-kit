@@ -33,7 +33,7 @@ bun add @screenly-labs/signage-kit
 | `@screenly-labs/signage-kit/analytics-server` | `playerProfileResponse()` — Worker route serving the live request's profile `no-store`, for the header-enriched vendors |
 | `@screenly-labs/signage-kit/analytics-schema` | `PLAYER_DIMENSIONS`, `PLAYER_METRICS` — the GA4 custom dimensions/metrics to register, as data |
 | `@screenly-labs/signage-kit/capability` | `detectCapability()` — measured degraded verdict + CSS support, for the screens whose UA has no version |
-| `@screenly-labs/signage-kit/analytics-bootstrap` | `analyticsBootstrap()` — the inline `<head>` GA4 tag that pins `client_id` to the device |
+| `@screenly-labs/signage-kit/analytics-bootstrap` | `analyticsBootstrap()`: the inline `<head>` GA4 tag that sets the player fields and pins `client_id` to the device before the first hit |
 | `@screenly-labs/signage-kit/screenly-metadata` | `screenlyMetadataFromRequest()`, `screenlyDeviceId()`, `hashDeviceId()` — the `X-Screenly-*` headers, incl. the only stable per-device id |
 | `@screenly-labs/signage-kit/sync-fonts` | `syncFonts()` + the version-pinned `FONTS` manifest — vendor the shared woff2 |
 | `@screenly-labs/signage-kit/styles/preset.css` | base Tailwind layer: brand/font/hairline tokens, tunable fluid root, resets, `svh` fallback, the degraded layer |
@@ -285,19 +285,33 @@ reports that instead:
 ```ts
 // Worker: mount the route (exclude it from the page cache)
 import { PLAYER_PROFILE_PATH, playerProfileResponse } from '@screenly-labs/signage-kit/analytics-server'
-app.get(PLAYER_PROFILE_PATH, (c) => playerProfileResponse(c.req.raw))
+app.get(PLAYER_PROFILE_PATH, (c) => playerProfileResponse(c.req.raw, { app: 'weather' }))
 ```
+
+Pass `app` and the payload gains a ready-made `userProperties` object, which the inline
+bootstrap sets **before** it calls `config`. Without it the automatic `page_view` goes out
+ahead of `trackPlayer` and carries no player fields, so the first page view under any
+`client_id` is unattributed. On a player that starts each load with fresh storage that is
+every page view it ever sends: `player_vendor=yodeck` measured 150 users and **zero** page
+views on 2026-08-14, and 21% of all app runs carried no player fields. Static apps have no
+server to build the profile, so they do not get this yet.
 
 `player_sources` records which signals were available, so a report can tell an enriched
 row from a user-agent-only one rather than silently mixing them.
 
-**Scope: user, not event.** On an unattended screen one GA4 user is one device, and a
-device's vendor/model/engine never changes, so these go out as **user properties** and
-attach to every event the screen ever sends. That is what makes "everything from
-BrightSign players" a filter on any report instead of one that only works on the event
-carrying the params, and it makes `totalUsers` per vendor a device census directly. A
-`player_detected` event carries the same values so there is a countable occurrence and a
-numeric `player_engine_version` GA4 can average.
+**Scope: user, not event.** A device's vendor/model/engine never changes, so these go out as
+**user properties** and attach to every event the screen sends after they are set. That is
+what makes "everything from BrightSign players" a filter on any report instead of one that
+only works on the event carrying the params. A `player_detected` event carries the same
+values so there is a countable occurrence and a numeric `player_engine_version` GA4 can
+average.
+
+**It does not make `totalUsers` per vendor a device census.** This document used to claim it
+did, and that was wrong. GA4's `client_id` lives in the `_ga` cookie and these players
+largely boot with fresh storage, so ids churn constantly, and the churn rate differs between
+players by two orders of magnitude: a vendor's share of `totalUsers` mostly reflects how it
+handles storage. Report absolute figures as app runs, and use `player_device` where real
+device identity is available.
 
 ### The GA4 schema
 
