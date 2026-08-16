@@ -292,6 +292,10 @@ export interface TrackPlayerOptions {
   /**
    * Fire the `page_view` from here, once the user properties are set.
    *
+   * Leave it unset on a Worker app: the bootstrap decides per load and says so via
+   * `window.__playerPageViewDeferred`, which this defaults to. Pass `false` to refuse
+   * outright.
+   *
    * PAIRS WITH `send_page_view: false` ON THE TAG. Set one without the other and the app
    * either double-counts every page view or stops counting them entirely, so the two live
    * and die together. The app's inline snippet carries a comment pointing back here.
@@ -345,7 +349,14 @@ export const trackPlayer = (profile: PlayerProfile, options: TrackPlayerOptions)
   // page view sent by `config` goes out before this screen has been profiled at all. Firing
   // it one line after the `set` puts it in exactly the position `player_detected` already
   // occupies, and that event is attributed on essentially every load.
-  if (sendPageView) gtag('event', 'page_view')
+  //
+  // The flag is how a Worker app opts in PER LOAD without changing a line: the bootstrap
+  // sets it only when no profile arrived, having suppressed the automatic page view for
+  // that load alone. An explicit `sendPageView` still wins in both directions, so a static
+  // app stays unconditional and a caller can refuse with `false`.
+  const deferred = (win as { __playerPageViewDeferred?: boolean } | undefined)
+    ?.__playerPageViewDeferred
+  if (sendPageView ?? deferred) gtag('event', 'page_view')
   gtag('event', PLAYER_EVENT, playerEventParams(profile, app, { ...config, ...extra }, capability))
   return true
 }

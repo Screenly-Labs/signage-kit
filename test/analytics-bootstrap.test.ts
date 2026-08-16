@@ -11,6 +11,8 @@ interface RunResult {
   cleared: boolean
   /** Re-read dataLayer AFTER firing the timer; `calls` is only a snapshot. */
   readCalls: () => unknown[][]
+  /** Whether the snippet handed the page view to trackPlayer for this load. */
+  deferredFlag: () => boolean | undefined
 }
 
 const run = async (
@@ -42,7 +44,15 @@ const run = async (
     ((win.dataLayer as unknown[] | undefined) ?? []).map((args) =>
       Array.from(args as ArrayLike<unknown>)
     )
-  return { calls: readCalls(), profile: win.__playerProfile, fireTimeout: pending, cleared, readCalls }
+  const deferredFlag = () => win.__playerPageViewDeferred as boolean | undefined
+  return {
+    calls: readCalls(),
+    profile: win.__playerProfile,
+    fireTimeout: pending,
+    cleared,
+    readCalls,
+    deferredFlag
+  }
 }
 
 const configCalls = (calls: unknown[][]) => calls.filter((c) => c[0] === 'config')
@@ -190,10 +200,12 @@ describe('analyticsBootstrap — the stall, which is the dangerous case', () => 
     fireTimeout?.()
 
     // The property that matters: the screen DOES report, just without a pinned client_id.
+    // It also hands the page view to trackPlayer, since with no profile the automatic one
+    // would go out knowing nothing about this screen.
     const after = configCalls(readCalls())
     expect(after).toHaveLength(1)
     expect(after[0]?.[1]).toBe('G-TEST')
-    expect(after[0]?.[2]).toEqual({})
+    expect(after[0]?.[2]).toEqual({ send_page_view: false })
   })
 
   it('produces exactly one config even if the timeout fires after the profile landed', async () => {
@@ -268,5 +280,49 @@ describe('analyticsBootstrap: attributing the first page view', () => {
     }))
     expect(setCalls(calls)).toHaveLength(1)
     expect(configCalls(calls)[0]?.[2]).toEqual({})
+  })
+})
+
+// Moon sat at 81% attributed and Air Quality at 89% while every static app hit exactly
+// 100%, because a handful of their screens never answer /api/player inside the timeout and
+// GA4's automatic page view then goes out knowing nothing about them. Those loads, and only
+// those, now hand the page view to trackPlayer.
+describe('analyticsBootstrap: the load that never gets a profile', () => {
+  const html = () => analyticsBootstrap({ gaId: 'G-TEST', profilePath: '/api/player' })
+  it('suppresses the automatic page view when the fetch fails', async () => {
+    const r = await run(html(), async () => {
+      throw new Error('offline')
+    })
+    expect(configCalls(r.calls)[0]?.[2]).toEqual({ send_page_view: false })
+  })
+
+  it('flags the load so trackPlayer knows to send it', async () => {
+    const r = await run(html(), async () => ({ ok: false, json: async () => null }))
+    expect(r.deferredFlag()).toBe(true)
+  })
+
+  it('does NOT touch the page view on the normal path', async () => {
+    // The automatic page view is already attributed there, and unlike a deferred one it
+    // cannot be lost if the bundle never runs. That is the better trade where it works.
+    const r = await run(html(), async () => ({
+      ok: true,
+      json: async () => ({ gaClientId: '1.2', userProperties: { player_vendor: 'anthias' } })
+    }))
+    expect(configCalls(r.calls)[0]?.[2]).toEqual({ client_id: '1.2' })
+    expect(r.deferredFlag()).toBeUndefined()
+  })
+
+  it('leaves a profile that carries no userProperties alone', async () => {
+    // An app that never passed `app` to playerProfileResponse. Its page view stays
+    // unattributed, as before. Switching it to the deferred path would trade a page view
+    // that is merely unlabelled for one that can go missing entirely.
+    const r = await run(html(), async () => ({ ok: true, json: async () => ({ gaClientId: '3.4' }) }))
+    expect(configCalls(r.calls)[0]?.[2]).toEqual({ client_id: '3.4' })
+    expect(r.deferredFlag()).toBeUndefined()
+  })
+
+  it('still sends exactly one config on the no-profile path', async () => {
+    const r = await run(html(), async () => null)
+    expect(configCalls(r.calls)).toHaveLength(1)
   })
 })
