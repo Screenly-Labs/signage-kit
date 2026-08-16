@@ -286,3 +286,53 @@ describe('trackPlayer: deferring the page view', () => {
     )
   })
 })
+
+// A Worker app opts in PER LOAD, without changing a line: the bootstrap suppresses the
+// automatic page view only on loads where no profile arrived, and says so via this flag.
+// That is what closes the gap on Moon (81% attributed) and Air Quality (89%) while leaving
+// the normal path, where the automatic page view cannot be lost, exactly as it was.
+describe('trackPlayer: the deferred-page-view flag', () => {
+  const winWith = (flag: boolean | undefined) => {
+    const calls: Call[] = []
+    return {
+      calls,
+      win: {
+        gtag: (...args: unknown[]) => calls.push(args as Call),
+        __playerPageViewDeferred: flag
+      } as never
+    }
+  }
+  const views = (calls: Call[]) => calls.filter((c) => c[0] === 'event' && c[1] === 'page_view')
+
+  it('sends the page view when the bootstrap deferred this load', () => {
+    const { calls, win } = winWith(true)
+    trackPlayer(profile(), { app: 'moon', win })
+    expect(views(calls)).toHaveLength(1)
+  })
+
+  it('sends nothing extra on a normal load', () => {
+    const { calls, win } = winWith(undefined)
+    trackPlayer(profile(), { app: 'moon', win })
+    expect(views(calls)).toHaveLength(0)
+  })
+
+  it('lets an explicit false refuse, even when the flag is set', () => {
+    const { calls, win } = winWith(true)
+    trackPlayer(profile(), { app: 'moon', sendPageView: false, win })
+    expect(views(calls)).toHaveLength(0)
+  })
+
+  it('lets an explicit true win, even with no flag: the static apps', () => {
+    const { calls, win } = winWith(undefined)
+    trackPlayer(profile(), { app: 'quotes', sendPageView: true, win })
+    expect(views(calls)).toHaveLength(1)
+  })
+
+  it('still fires the page view AFTER the user properties', () => {
+    const { calls, win } = winWith(true)
+    trackPlayer(profile(), { app: 'moon', win })
+    const setAt = calls.findIndex((c) => c[0] === 'set' && c[1] === 'user_properties')
+    expect(views(calls).length).toBe(1)
+    expect(calls.findIndex((c) => c[1] === 'page_view')).toBeGreaterThan(setAt)
+  })
+})

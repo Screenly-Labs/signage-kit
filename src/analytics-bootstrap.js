@@ -121,7 +121,7 @@ export function analyticsBootstrap({ gaId, profilePath, timeoutMs = 1500, config
         // Exactly one config call on every path, so a stalled fetch cannot leave a screen
         // silent. A screen reporting under a churning id is bad; a screen reporting nothing
         // is worse.
-        function configure(clientId, properties) {
+        function configure(clientId, properties, noProfile) {
           if (configured) return;
           configured = true;
           // Set BEFORE config, so the automatic page_view carries the player fields. See the
@@ -130,17 +130,31 @@ export function analyticsBootstrap({ gaId, profilePath, timeoutMs = 1500, config
           var cfg = ${params};
           // client_id last, so it always wins over app-supplied params.
           if (clientId) cfg.client_id = clientId;
+          // No profile arrived, so GA4's automatic page view would go out knowing nothing
+          // about this screen. Hand the page view to trackPlayer instead, which runs with
+          // the user-agent profile it can always build. Only on this path: on the normal
+          // one the automatic page view is already attributed and is never at risk of
+          // being lost, which is the better trade wherever it is available.
+          if (noProfile) {
+            cfg.send_page_view = false;
+            window.__playerPageViewDeferred = true;
+          }
           gtag('config', '${gaId}', cfg);
         }
-        var timer = setTimeout(function () { configure(null, null); }, ${timeoutMs});
+        var timer = setTimeout(function () { configure(null, null, true); }, ${timeoutMs});
         function settle(profile) {
           // Stashed so the app bundle can reuse it instead of fetching the same no-store
           // endpoint a second time.
           window.__playerProfile = profile || null;
           clearTimeout(timer);
+          // Deferred only when NO profile arrived. A profile that arrived without
+          // userProperties means the app never passed \`app\` to playerProfileResponse, and
+          // that stays as it was: silently switching such an app to the deferred path would
+          // trade a known unattributed page view for one that can go missing.
           configure(
             profile && profile.gaClientId ? profile.gaClientId : null,
-            profile ? profile.userProperties : null
+            profile ? profile.userProperties : null,
+            !profile
           );
         }
         try {

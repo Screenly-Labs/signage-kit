@@ -315,6 +315,17 @@ static app, measured, against 68% of their page views carrying no player fields 
 Weather the same gap is 1.7%, which is why the Worker apps keep the automatic page view
 and use the `app` option above instead.
 
+**A Worker app falls back to the same trick, but only on the loads that need it.** Its profile
+arrives over the network, and on a screen that does not answer within `timeoutMs` the bootstrap
+used to configure knowing nothing about the player, so that load's page view was unattributed.
+Measured 2026-08-15, that left Moon at **81.0%** and Air Quality at **89.4%** while every static
+app sat at exactly 100%. So when no profile arrives, and only then, the bootstrap sets
+`send_page_view: false` for that load and flags it as `window.__playerPageViewDeferred`;
+`trackPlayer` reads the flag and sends the page view itself, using the user-agent profile it can
+always build. Apps need no code change for this, only the version. A profile that arrives
+*without* `userProperties` is left alone: that means the app never passed `app` above, and
+trading a merely unlabelled page view for one that can go missing would be the wrong way round.
+
 `player_sources` records which signals were available, so a report can tell an enriched
 row from a user-agent-only one rather than silently mixing them.
 
