@@ -70,10 +70,10 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.12",
+    "@biomejs/biome": "^2.5.13",
     "@csstools/postcss-cascade-layers": "^6.0.0",
-    "browserslist": "^4.28.8",
-    "bun-types": "^1.4.0",
+    "browserslist": "^4.28.9",
+    "bun-types": "^1.4.2",
     "esbuild": "^0.28.2",
     "lightningcss": "^1.33.0",
     "postcss": "^8.5.28",
