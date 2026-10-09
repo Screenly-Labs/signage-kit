@@ -30,6 +30,8 @@
 // GATE string itself against the same synthetic environments and asserts the two agree. Same
 // guard as ./analytics-schema uses against GA4 drift.
 
+import { HAS_NATIVE_REPLACE_CHILDREN } from './native-dom'
+
 /**
  * Why a screen is on the degraded path.
  *
@@ -63,9 +65,22 @@ export interface ProbeWindow {
  * `replaceChildren` is a 2020-era DOM API and is the gate's own staleness check. It is one
  * Chromium version more permissive than FLOOR (86 against 87), which is exactly why this
  * module reports "is this screen degraded" rather than claiming to restate the floor.
+ *
+ * It is also the API ./polyfills shims, and every app imports that shim as the first line
+ * of its browser entry — so on the live window the property is always present by the time
+ * `trackPlayer` probes, and reading it here would answer "modern" on every screen in the
+ * fleet. The gate does not have this problem: it runs inline in <head>, before the bundle.
+ * So for the real `Element` the answer comes from ./native-dom's pre-shim snapshot, and
+ * only a caller-supplied stub — a test, a Worker — is probed directly.
  */
-const isOldEngine = (win: ProbeWindow): boolean =>
-  !(win.Element && 'replaceChildren' in win.Element.prototype)
+const isOldEngine = (win: ProbeWindow): boolean => {
+  const live = typeof Element !== 'undefined' ? Element : undefined
+  // Keyed on the object the shim actually patches, not on the window, so a stub carrying
+  // its own `Element` is probed on its own terms even when a DOM is present.
+  if (live && win.Element === (live as unknown as ProbeWindow['Element']))
+    return !HAS_NATIVE_REPLACE_CHILDREN
+  return !(win.Element && 'replaceChildren' in win.Element.prototype)
+}
 
 /**
  * Weak hardware, by the gate's thresholds. Both readings are Chromium-only and absent

@@ -369,6 +369,14 @@ in as data, in `./analytics-schema`, rather than living only in 16 admin screens
 | `player_metadata` | USER | was Screenly asset metadata present on the request |
 | `player_engine_version` | EVENT **metric** | same param as a number, so GA4 can average it |
 
+> **Reading `player_degraded_reason` across the `native-dom` fix.** Until that snapshot landed,
+> `./capability` read `Element.prototype.replaceChildren` at probe time — after `./polyfills` had
+> installed it — so the `old` branch could not fire in a browser. Rows collected before the fix
+> carry `slow` or `none` where `old+slow` or `old` was due, and never `old`. `player_degraded`
+> itself still reads `true` wherever the hardware check also fired, and `player_css_support` is
+> probed independently and was always correct — `none` there means `:is()` is unsupported, which
+> is the reliable way to age a screen on either side of the boundary.
+
 ### `totalUsers` is not a device count
 
 GA4's `client_id` lives in the `_ga` cookie and these players largely boot with fresh storage.

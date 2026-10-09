@@ -6,8 +6,14 @@
 //
 // Imported only for its side effect (installing the shim) as the first line of a
 // browser entry; it exports nothing.
+//
+// The ./native-dom import is load-bearing beyond the value it returns: importing it here
+// is what guarantees the pre-shim reading is taken before the line below runs, whether or
+// not ./capability is ever loaded.
 
-if (typeof Element !== 'undefined' && !Element.prototype.replaceChildren) {
+import { HAS_NATIVE_REPLACE_CHILDREN } from './native-dom'
+
+if (typeof Element !== 'undefined' && !HAS_NATIVE_REPLACE_CHILDREN) {
   Element.prototype.replaceChildren = function replaceChildren(
     this: Element,
     ...nodes: (Node | string)[]
